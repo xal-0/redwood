@@ -7,9 +7,10 @@ build-type:          Simple
 executable small-programming-language
   main-is:             Main.hs
   build-depends:       base >=4.14 && <4.15
+                     , containers
                      , megaparsec
+                     , mtl >= 2.2.2
                      , parser-combinators
   hs-source-dirs:      src
   default-language:    Haskell2010
   other-modules:       Syntax
-                     , Parser

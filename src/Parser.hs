@@ -9,28 +9,37 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 type Parser = Parsec Void String
 
-sc :: Parser ()
-sc = L.space space1 empty empty
+stmt :: Parser Stmt
+stmt =
+  label "statement" $
+    choice
+      [ stmtReturn,
+        stmtFuncDef,
+        try stmtAssignment,
+        StmtExpr <$> expr
+      ]
 
-symbol :: String -> Parser String
-symbol = L.symbol sc
+stmtAssignment :: Parser Stmt
+stmtAssignment =
+  StmtAssign <$> identifier
+    <*> (symbol "=" *> expr)
 
-lexeme :: Parser a -> Parser a
-lexeme = L.lexeme sc
+stmtReturn :: Parser Stmt
+stmtReturn = symbol "return" *> (StmtReturn <$> optional expr)
 
-parens :: Parser a -> Parser a
-parens = between (symbol "(") (symbol ")")
-
-identifier :: Parser String
-identifier = lexeme $ do
-  first <- identChar
-  end <- many (identChar <|> numberChar)
-  pure (first : end)
+stmtFuncDef :: Parser Stmt
+stmtFuncDef =
+  symbol "func"
+    *> (StmtFuncDef <$> identifier <*> args <*> stmtBlock)
   where
-    identChar = letterChar <|> char '_'
+    args = parens (identifier `sepBy` char ',')
+
+stmtBlock :: Parser Block
+stmtBlock =
+  between (symbol "{") (symbol "}") (sepEndBy stmt (some (lexeme newline)))
 
 expr :: Parser Expr
-expr = makeExprParser term ops
+expr = label "expression" $ makeExprParser term ops
   where
     ops =
       [ [ Postfix manyCall
@@ -41,10 +50,10 @@ expr = makeExprParser term ops
 
     manyCall = foldr1 (.) <$> some call
 
-    binary name op = InfixL (ExprBinop op <$ symbol name)
+    binary name op = InfixL (label "operator" $ ExprBinop op <$ symbol name)
     call = do
-      args <- argList
-      pure (\f -> ExprCall f args)
+      args <- parens (expr `sepBy` char ',')
+      pure (`ExprCall` args)
 
 term :: Parser Expr
 term =
@@ -55,17 +64,34 @@ term =
         parens expr
       ]
 
-argList :: Parser [Expr]
-argList = parens (expr `sepBy` char ',')
-
-call :: Parser Expr
-call = ExprCall <$> expr <*> argList
-
 variable :: Parser Expr
 variable = ExprVariable <$> identifier
 
 number :: Parser Expr
-number = ExprNumber <$> L.signed sc (try float <|> integer)
+number =
+  label "number" $
+    ExprNumber <$> L.signed sc (try float <|> integer)
   where
     integer = fromIntegral <$> L.decimal
     float = L.float
+
+identifier :: Parser String
+identifier = label "identifier" $
+  lexeme $ do
+    first <- identChar
+    end <- many (identChar <|> numberChar)
+    pure (first : end)
+  where
+    identChar = letterChar <|> char '_'
+
+sc :: Parser ()
+sc = L.space hspace1 empty empty
+
+symbol :: String -> Parser String
+symbol = L.symbol sc
+
+lexeme :: Parser a -> Parser a
+lexeme = L.lexeme sc
+
+parens :: Parser a -> Parser a
+parens = between (symbol "(") (symbol ")")
