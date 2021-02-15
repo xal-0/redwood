@@ -34,6 +34,7 @@ expr ::= number                Float literal
        | expr '[' expr ']'     Array/dictionary indexing
        | '!' expr              Boolean not
        | '-' expr
+       | 'func' '(' args ')' block  Lambda
        | 'null'
 
 array ::= '[' expr? (',' expr)* ']'              Array literals

@@ -1,5 +1,6 @@
 module Parser where
 
+import Control.Monad
 import Control.Monad.Combinators.Expr
 import Data.Void
 import Syntax
@@ -14,7 +15,7 @@ stmt =
   label "statement" $
     choice
       [ stmtReturn,
-        stmtFuncDef,
+        try stmtFuncDef,
         try stmtAssignment,
         StmtExpr <$> expr
       ]
@@ -23,20 +24,28 @@ stmtAssignment :: Parser Stmt
 stmtAssignment =
   StmtAssign <$> identifier
     <*> (symbol "=" *> expr)
-
+ 
 stmtReturn :: Parser Stmt
 stmtReturn = symbol "return" *> (StmtReturn <$> optional expr)
 
 stmtFuncDef :: Parser Stmt
 stmtFuncDef =
   symbol "func"
-    *> (StmtFuncDef <$> identifier <*> args <*> stmtBlock)
-  where
-    args = parens (identifier `sepBy` char ',')
+    *> (StmtAssign <$> identifier <*> (ExprFunc <$> funcArgs <*> stmtBlock))
+
+funcArgs :: Parser [Ident]
+funcArgs = parens (identifier `sepBy` symbol ",")
 
 stmtBlock :: Parser Block
-stmtBlock =
-  between (symbol "{") (symbol "}") (sepEndBy stmt (some (lexeme newline)))
+stmtBlock = braces stmts
+  where
+    braces =
+      between
+        (symbol "{" *> many (lexeme newline))
+        (symbol "}")
+
+stmts :: Parser Block
+stmts = stmt `sepEndBy` some (lexeme newline)
 
 expr :: Parser Expr
 expr = label "expression" $ makeExprParser term ops
@@ -52,7 +61,7 @@ expr = label "expression" $ makeExprParser term ops
 
     binary name op = InfixL (label "operator" $ ExprBinop op <$ symbol name)
     call = do
-      args <- parens (expr `sepBy` char ',')
+      args <- parens (expr `sepBy` symbol ",")
       pure (`ExprCall` args)
 
 term :: Parser Expr
@@ -60,9 +69,14 @@ term =
   lexeme $
     choice
       [ number,
+        exprFunc,
         variable,
         parens expr
       ]
+
+exprFunc :: Parser Expr
+exprFunc =
+  symbol "func" *> (ExprFunc <$> funcArgs <*> stmtBlock)
 
 variable :: Parser Expr
 variable = ExprVariable <$> identifier
@@ -80,9 +94,23 @@ identifier = label "identifier" $
   lexeme $ do
     first <- identChar
     end <- many (identChar <|> numberChar)
-    pure (first : end)
+    let s = first : end
+    guard (s `notElem` reserved)
+    pure s
   where
     identChar = letterChar <|> char '_'
+    reserved =
+      [ "func",
+        "if",
+        "while",
+        "in",
+        "for",
+        "return",
+        "else",
+        "null",
+        "true",
+        "false"
+      ]
 
 sc :: Parser ()
 sc = L.space hspace1 empty empty

@@ -8,7 +8,6 @@ type Block = [Stmt]
 data Stmt = StmtExpr Expr
           | StmtAssign Ident Expr
           | StmtReturn (Maybe Expr)
-          | StmtFuncDef Ident [Ident] Block
   deriving Show
 
 data Binop = BinopPlus
@@ -18,4 +17,5 @@ data Expr = ExprVariable Ident
           | ExprNumber Double
           | ExprBinop Binop Expr Expr
           | ExprCall Expr [Expr]
+          | ExprFunc [Ident] Block
   deriving Show
