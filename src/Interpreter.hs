@@ -5,6 +5,7 @@ module Interpreter where
 import Control.Monad.Except
 import Control.Monad.State
 import Data.IORef
+import Data.List
 import qualified Data.Map as M
 import Syntax
 
@@ -61,13 +62,17 @@ data Error
   = ErrLookup Ident
   | ErrType VType VType
   | ErrArgs Int Int
+  | ErrAssign
   deriving (Show)
 
 type Interpreter a = StateT Env (ExceptT Error IO) a
 
 testBlock :: Block
 testBlock =
-  [ StmtExpr (ExprIfElseChain [(ExprBool True, [StmtExpr (ExprCall (ExprVariable "print") [ExprNumber 123])])] Nothing )
+  [ StmtExpr 
+    (ExprIfElseChain 
+      [(ExprBool True, [StmtExpr (ExprCall (ExprVariable "print") [ExprNumber 123])])] 
+      Nothing )
   ]
 
 testInterpret :: Block -> IO (Either Error Value)
@@ -97,10 +102,11 @@ evalStmt s@(StmtWhile condition conditional) = do
     then evalBlock conditional >> evalStmt s
     else pure ValueNull
 evalStmt (StmtExpr e) = evalExpr e
-evalStmt (StmtAssign v e) = mdo
+evalStmt (StmtAssign (ExprVariable v) e) = mdo
   modify (\(Env m) -> Env (M.insert v e' m))
   e' <- evalExpr e
   pure ValueNull
+evalStmt (StmtAssign _ _) = throwError ErrAssign
 evalStmt (StmtReturn Nothing) = pure ValueNull
 evalStmt (StmtReturn (Just r)) = evalExpr r
 
@@ -126,7 +132,8 @@ evalExpr (ExprFunc ps body) = do
   pure (ValueClosure env ps body)
 evalExpr (ExprArray exprs) = do
   exprs' <- traverse evalExpr exprs
-  undefined
+  ref <- liftIO (newIORef (ObjectArray exprs'))
+  pure (ValueRef ref)
 evalExpr (ExprIfElseChain [] Nothing) = pure ValueNull
 evalExpr (ExprIfElseChain [] (Just els)) = evalBlock els
 evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
@@ -154,6 +161,12 @@ showValue (ValueBool b) = pure (if b then "true" else "false")
 showValue (ValueClosure _ _ _) = pure "<closure>"
 showValue ValueNull = pure "null"
 showValue (ValuePrim p) = pure "<primitive>"
+showValue (ValueRef r) = do
+  obj <- liftIO (readIORef r)
+  case obj of
+    ObjectArray values -> do
+      strs <- traverse showValue values
+      pure ("[" ++ intercalate ", " strs ++ "]")
 
 checkNumber :: Value -> Interpreter Double
 checkNumber (ValueNumber n) = pure n
