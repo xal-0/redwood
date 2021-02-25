@@ -28,10 +28,10 @@ data Error
   | ErrArgs Int Int
   deriving (Show)
 
-type Interpreter a = StateT Env (Except Error) a
+type Interpreter a = StateT Env (ExceptT Error IO) a
 
-testInterpret :: Block -> Either Error Value
-testInterpret b = runExcept (evalStateT (evalBlock b) (Env M.empty))
+testInterpret :: Block -> IO (Either Error Value)
+testInterpret b = runExceptT (evalStateT (evalBlock b) (Env M.empty))
 
 apply :: Env -> [Ident] -> Block -> [Value] -> Interpreter Value
 apply (Env env) params body args
