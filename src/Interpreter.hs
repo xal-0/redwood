@@ -87,7 +87,11 @@ data Error
 type Interpreter a = StateT Env (ExceptT Error IO) a
 
 testBlock :: Block
-testBlock = [StmtExpr (ExprIfElseChain [] Nothing)]
+testBlock =
+  [ StmtAssign (ExprVariable "x") (ExprArray [ExprNumber 3]),
+    StmtAssign (ExprIndex (ExprVariable "x") (ExprNumber 0)) (ExprNumber 4),
+    StmtExpr (ExprCall (ExprVariable "print") [ExprVariable "x"])
+  ]
 
 testInterpret :: Block -> IO (Either Error Value)
 testInterpret b = runExceptT (evalStateT (evalBlock b) initialEnv)
@@ -116,9 +120,32 @@ evalStmt s@(StmtWhile condition conditional) = do
     then evalBlock conditional >> evalStmt s
     else pure ValueNull
 evalStmt (StmtExpr e) = evalExpr e
+-- Need a recursive do when doing assignments, since functions can
+-- refer to themselves.  We first insert the evaluated expression into
+-- the environment, and only then evaluate the expression.  Laziness
+-- wins again!
 evalStmt (StmtAssign (ExprVariable v) e) = mdo
   modify (\(Env m) -> Env (M.insert v e' m))
   e' <- evalExpr e
+  pure ValueNull
+-- Assigning to a dictionary/array can't be recursive, because they're
+-- on the heap.
+evalStmt (StmtAssign (ExprIndex ref index) e) = do
+  ref' <- evalExpr ref >>= checkRef
+  index' <- evalExpr index
+  obj <- liftIO (readIORef ref')
+  e' <- evalExpr e
+  case obj of
+    ObjectArray a -> do
+      i <- checkInt index'
+      case replaceIdx a i e' of
+        Nothing -> throwError ErrIndex
+        Just a' -> do
+          liftIO (writeIORef ref' (ObjectArray a'))
+    ObjectDict d -> do
+      checkKey index'
+      let d' = M.insert index' e' d
+      liftIO (writeIORef ref' (ObjectDict d'))
   pure ValueNull
 evalStmt (StmtAssign _ _) = throwError ErrAssign
 evalStmt (StmtReturn Nothing) = pure ValueNull
@@ -157,15 +184,12 @@ evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
     then evalBlock body
     else evalExpr (ExprIfElseChain xs els)
 evalExpr (ExprIndex ref index) = do
-  ref' <- evalExpr ref >>= checkRef
+  obj <- evalExpr ref >>= checkRef >>= liftIO . readIORef
   index' <- evalExpr index
-  obj <- liftIO (readIORef ref')
   case obj of
     ObjectArray a -> do
-      i <- checkNumber index'
-      if i /= fromIntegral (round i)
-        then throwError ErrIndex 
-        else maybe (throwError ErrIndex) pure (a !!? round i)
+      i <- checkInt index'
+      maybe (throwError ErrIndex) pure (a !!? i)
     ObjectDict d -> do
       checkKey index'
       maybe (throwError ErrIndex) pure (M.lookup index' d)
@@ -181,6 +205,46 @@ evalBinop BinopPlus x y = do
   x' <- checkNumber x
   y' <- checkNumber y
   pure (ValueNumber (x' + y'))
+evalBinop BinopMinus x y = do
+  x' <- checkNumber x
+  y' <- checkNumber y
+  pure (ValueNumber (x' - y'))
+evalBinop BinopLessThan x y = do
+  x' <- checkNumber x
+  y' <- checkNumber y
+  pure (ValueBool (x' < y'))
+evalBinop BinopGreaterThan x y = do
+  x' <- checkNumber x
+  y' <- checkNumber y
+  pure (ValueBool (x' > y'))
+evalBinop BinopLessThanEq x y = do
+  x' <- checkNumber x
+  y' <- checkNumber y
+  pure (ValueBool (x' <= y'))
+evalBinop BinopGreaterThanEq x y = do
+  x' <- checkNumber x
+  y' <- checkNumber y
+  pure (ValueBool (x' >= y'))
+evalBinop BinopEq x y = do
+  equiv <- evalEq x y
+  pure (ValueBool equiv)
+evalBinop BinopNotEq x y = do
+  equiv <- evalEq x y
+  pure (ValueBool (not equiv))
+evalBinop BinopAnd x y = do
+  x' <- checkBool x
+  y' <- checkBool y
+  pure (ValueBool (x' && y'))
+evalBinop BinopOr x y = do
+  x' <- checkBool x
+  y' <- checkBool y
+  pure (ValueBool (x' || y'))
+
+-- | determines whether two expresions are equal
+evalEq :: Value -> Value -> Interpreter Bool
+evalEq (ValueNumber n) (ValueNumber m) = pure (n == m)
+evalEq (ValueBool n) (ValueBool m) = pure (n == m)
+evalEq a b = throwError (ErrType (valueType a) (valueType b))
 
 showValue :: Value -> Interpreter String
 showValue (ValueNumber n) = pure (show n)
@@ -198,6 +262,13 @@ showValue (ValueRef r) = do
 checkNumber :: Value -> Interpreter Double
 checkNumber (ValueNumber n) = pure n
 checkNumber v = throwError (ErrType VTypeNumber (valueType v))
+
+checkInt :: Value -> Interpreter Int
+checkInt x = do
+  num <- checkNumber x
+  if num /= fromIntegral (round num)
+    then throwError ErrIndex
+    else pure (round num)
 
 checkBool :: Value -> Interpreter Bool
 checkBool (ValueBool n) = pure n

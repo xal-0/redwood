@@ -16,3 +16,4 @@ executable small-programming-language
   other-modules:       Interpreter
                      , Parser
                      , Syntax
+                     , Utils
