@@ -12,12 +12,14 @@ newtype Env = Env (M.Map Ident Value)
 
 data Value
   = ValueNumber Double
+  | ValueBool Bool 
   | ValueClosure Env [Ident] Block
   | ValueNull
   deriving (Show)
 
 data VType
   = VTypeNumber
+  | VTypeBool
   | VTypeClosure
   | VTypeNull
   deriving (Show)
@@ -29,6 +31,9 @@ data Error
   deriving (Show)
 
 type Interpreter a = StateT Env (ExceptT Error IO) a
+
+testBlock :: Block
+testBlock = [ StmtWhile (ExprBool False ) [ ] ]
 
 testInterpret :: Block -> IO (Either Error Value)
 testInterpret b = runExceptT (evalStateT (evalBlock b) (Env M.empty))
@@ -50,6 +55,12 @@ evalBlock [stmt] = evalStmt stmt
 evalBlock (stmt : stmts) = evalStmt stmt >> evalBlock stmts
 
 evalStmt :: Stmt -> Interpreter Value
+evalStmt s@(StmtWhile condition conditional) = do
+  conditionValue <- evalExpr condition
+  conditionBool <- checkBool conditionValue
+  if conditionBool
+    then evalBlock conditional >> evalStmt s
+    else pure ValueNull
 evalStmt (StmtExpr e) = evalExpr e
 evalStmt (StmtAssign v e) = mdo
   modify (\(Env m) -> Env (M.insert v e' m))
@@ -63,6 +74,7 @@ evalExpr (ExprVariable v) = do
   Env m <- get
   maybe (throwError (ErrLookup v)) pure (M.lookup v m)
 evalExpr (ExprNumber n) = pure (ValueNumber n)
+evalExpr (ExprBool n) = pure (ValueBool n)
 evalExpr (ExprBinop op x y) = do
   x' <- evalExpr x
   y' <- evalExpr y
@@ -84,6 +96,10 @@ evalBinop BinopPlus x y = do
 checkNumber :: Value -> Interpreter Double
 checkNumber (ValueNumber n) = pure n
 checkNumber v = throwError (ErrType VTypeNumber (valueType v))
+
+checkBool :: Value -> Interpreter Bool
+checkBool (ValueBool n) = pure n
+checkBool v = throwError (ErrType VTypeBool (valueType v))
 
 checkClosure :: Value -> Interpreter (Env, [Ident], Block)
 checkClosure (ValueClosure env params body) = pure (env, params, body)
