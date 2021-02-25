@@ -62,6 +62,7 @@ data Error
   = ErrLookup Ident
   | ErrType VType VType
   | ErrArgs Int Int
+  | ErrAssign
   deriving (Show)
 
 type Interpreter a = StateT Env (ExceptT Error IO) a
@@ -96,10 +97,11 @@ evalStmt s@(StmtWhile condition conditional) = do
     then evalBlock conditional >> evalStmt s
     else pure ValueNull
 evalStmt (StmtExpr e) = evalExpr e
-evalStmt (StmtAssign v e) = mdo
+evalStmt (StmtAssign (ExprVariable v) e) = mdo
   modify (\(Env m) -> Env (M.insert v e' m))
   e' <- evalExpr e
   pure ValueNull
+evalStmt (StmtAssign _ _) = throwError ErrAssign
 evalStmt (StmtReturn Nothing) = pure ValueNull
 evalStmt (StmtReturn (Just r)) = evalExpr r
 
