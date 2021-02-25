@@ -71,7 +71,7 @@ testBlock :: Block
 testBlock =
   [ StmtExpr 
     (ExprIfElseChain 
-      [(ExprBool True, [StmtExpr (ExprCall (ExprVariable "print") [ExprNumber 123])])] 
+      [(ExprBool True, [StmtExpr (ExprCall (ExprVariable "print") [ExprBinop BinopPlus (ExprNumber 123) (ExprNumber 123)])])] 
       Nothing )
   ]
 
