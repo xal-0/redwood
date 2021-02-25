@@ -15,5 +15,9 @@ main = do
       fileContents <- readFile filename
       case parse (stmts <* eof) filename fileContents of
         Left err -> putStrLn (errorBundlePretty err)
-        Right prog -> testInterpret prog >>= print
+        Right prog -> do
+          result <- testInterpret prog
+          case result of
+            Left e -> print e
+            Right _ -> pure ()
     _ -> putStrLn "provide the file to execute as an argument"

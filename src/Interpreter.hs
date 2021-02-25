@@ -15,7 +15,7 @@ newtype Env = Env (M.Map Ident Value)
 -- pass a value to a function, it is "copied" in.)
 data Value
   = ValueNumber Double
-  | ValueBool Bool 
+  | ValueBool Bool
   | -- | A closure.  When you evaluate a functione expression, it
     -- | closes over its local envinrionment and returns it in one of
     -- | these (lexical scope).
@@ -28,17 +28,33 @@ data Value
     -- | Assigning to a dictionary/array access expression mutates the
     -- | object pointed to by the reference.
     ValueRef (IORef Object)
+  | -- | A builtin value, like print.
+    ValuePrim Prim
 
 -- | An object on the heap.  Functions that modify objects can write
 -- to the IORef pointing to us.
 data Object
   = ObjectArray [Value]
 
+-- | A built-in value, like the print function.
+data Prim
+  = PrimPrint
+
+-- | Mappings from variable names to built-in functions.  Programs get
+-- these bindings in their environment when they start.
+initialEnv :: Env
+initialEnv =
+  Env $
+    M.fromList
+      [ ("print", ValuePrim PrimPrint)
+      ]
+
 data VType
   = VTypeNumber
   | VTypeBool
   | VTypeClosure
   | VTypeNull
+  | VTypePrim
   deriving (Show)
 
 data Error
@@ -50,10 +66,10 @@ data Error
 type Interpreter a = StateT Env (ExceptT Error IO) a
 
 testBlock :: Block
-testBlock = [ StmtWhile (ExprBool False ) [ ] ]
+testBlock = [StmtWhile (ExprBool False) []]
 
 testInterpret :: Block -> IO (Either Error Value)
-testInterpret b = runExceptT (evalStateT (evalBlock b) (Env M.empty))
+testInterpret b = runExceptT (evalStateT (evalBlock b) initialEnv)
 
 apply :: Env -> [Ident] -> Block -> [Value] -> Interpreter Value
 apply (Env env) params body args
@@ -97,9 +113,12 @@ evalExpr (ExprBinop op x y) = do
   y' <- evalExpr y
   evalBinop op x' y'
 evalExpr (ExprCall f as) = do
-  (env, params, body) <- evalExpr f >>= checkClosure
+  f' <- evalExpr f
   as' <- traverse evalExpr as
-  apply env params body as'
+  case f' of
+    ValueClosure env params body -> apply env params body as'
+    ValuePrim p -> evalPrim p as'
+    _ -> throwError (ErrType VTypeClosure (valueType f'))
 evalExpr (ExprFunc ps body) = do
   env <- get
   pure (ValueClosure env ps body)
@@ -117,11 +136,24 @@ evalExpr (ExprIfElseChain (x:xs) els) = do
 
 
 
+evalPrim :: Prim -> [Value] -> Interpreter Value
+evalPrim PrimPrint as = do
+  strs <- traverse showValue as
+  liftIO (putStrLn (concat strs))
+  pure ValueNull
+
 evalBinop :: Binop -> Value -> Value -> Interpreter Value
 evalBinop BinopPlus x y = do
   x' <- checkNumber x
   y' <- checkNumber y
   pure (ValueNumber (x' + y'))
+
+showValue :: Value -> Interpreter String
+showValue (ValueNumber n) = pure (show n)
+showValue (ValueBool b) = pure (if b then "true" else "false")
+showValue (ValueClosure _ _ _) = pure "<closure>"
+showValue ValueNull = pure "null"
+showValue (ValuePrim p) = pure "<primitive>"
 
 checkNumber :: Value -> Interpreter Double
 checkNumber (ValueNumber n) = pure n
@@ -131,11 +163,8 @@ checkBool :: Value -> Interpreter Bool
 checkBool (ValueBool n) = pure n
 checkBool v = throwError (ErrType VTypeBool (valueType v))
 
-checkClosure :: Value -> Interpreter (Env, [Ident], Block)
-checkClosure (ValueClosure env params body) = pure (env, params, body)
-checkClosure v = throwError (ErrType VTypeClosure (valueType v))
-
 valueType :: Value -> VType
 valueType (ValueNumber _) = VTypeNumber
 valueType ValueClosure {} = VTypeClosure
 valueType ValueNull = VTypeNull
+valueType (ValuePrim _) = VTypePrim
