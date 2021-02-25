@@ -11,4 +11,4 @@ main = do
   input <- getContents
   case parse (stmts <* eof) "<repl>" input of
     Left err -> putStrLn (errorBundlePretty err)
-    Right prog -> print (testInterpret prog)
+    Right prog -> testInterpret prog >>= print
