@@ -25,7 +25,9 @@ data Stmt
   deriving (Show)
 
 -- | Binary operations, like arithmetic.
-data Binop = BinopPlus
+data Binop 
+  = BinopPlus 
+  | BinopEq
   deriving (Show)
 
 -- | Expressions, which evaluate to a value and can have side effects.
