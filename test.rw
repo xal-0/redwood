@@ -1,0 +1,5 @@
+func double(x) {
+  x + x
+}
+
+double(double(3))
