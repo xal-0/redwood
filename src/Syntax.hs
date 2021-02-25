@@ -27,7 +27,15 @@ data Stmt
 -- | Binary operations, like arithmetic.
 data Binop 
   = BinopPlus 
+  | BinopMinus
+  | BinopLessThan
+  | BinopGreaterThan
+  | BinopLessThanEq
+  | BinopGreaterThanEq
   | BinopEq
+  | BinopNotEq
+  | BinopAnd
+  | BinopOr
   deriving (Show)
 
 -- | Expressions, which evaluate to a value and can have side effects.
