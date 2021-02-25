@@ -25,7 +25,6 @@ data Stmt
 data Binop = BinopPlus
   deriving (Show)
 
-
 -- | Expressions, which evaluate to a value and can have side effects.
 data Expr
   = -- | A reference to a variable in the current scope.
@@ -44,4 +43,6 @@ data Expr
   | -- | A lambda: the ident list are the formal parameters, and the
     -- block is the function body.
     ExprFunc [Ident] Block
+  | -- | A literal array.
+    ExprArray [Expr]
   deriving (Show)
