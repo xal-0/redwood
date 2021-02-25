@@ -66,7 +66,9 @@ data Error
 type Interpreter a = StateT Env (ExceptT Error IO) a
 
 testBlock :: Block
-testBlock = [StmtWhile (ExprBool False) []]
+testBlock =
+  [ StmtExpr (ExprIfElseChain [(ExprBool True, [StmtExpr (ExprCall (ExprVariable "print") [ExprNumber 123])])] Nothing )
+  ]
 
 testInterpret :: Block -> IO (Either Error Value)
 testInterpret b = runExceptT (evalStateT (evalBlock b) initialEnv)
