@@ -10,6 +10,8 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 type Parser = Parsec Void String
 
+-- | Parser for statements.  This can be a plain expression, if we are
+-- executing the expression for the side effects.
 stmt :: Parser Stmt
 stmt =
   label "statement" $

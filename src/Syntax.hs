@@ -42,4 +42,6 @@ data Expr
   | -- | A lambda: the ident list are the formal parameters, and the
     -- block is the function body.
     ExprFunc [Ident] Block
+  | -- | A literal array.
+    ExprArray [Expr]
   deriving (Show)

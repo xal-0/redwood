@@ -4,18 +4,35 @@ module Interpreter where
 
 import Control.Monad.Except
 import Control.Monad.State
+import Data.IORef
 import qualified Data.Map as M
 import Syntax
 
 newtype Env = Env (M.Map Ident Value)
-  deriving (Show)
 
+-- | An immutable value at runtime.  Variables bind to these directly:
+-- assigning to a variable changes which value it points to.  (If you
+-- pass a value to a function, it is "copied" in.)
 data Value
   = ValueNumber Double
   | ValueBool Bool 
-  | ValueClosure Env [Ident] Block
+  | -- | A closure.  When you evaluate a functione expression, it
+    -- | closes over its local envinrionment and returns it in one of
+    -- | these (lexical scope).
+    ValueClosure Env [Ident] Block
   | ValueNull
-  deriving (Show)
+  | -- | A reference to an object on the heap.  This is for variables
+    -- | that refer to things that can be mutated, like arrays or
+    -- | dictionaries.  When you pass a reference into a function, the
+    -- | reference is copied, but the object that it points to is not.
+    -- | Assigning to a dictionary/array access expression mutates the
+    -- | object pointed to by the reference.
+    ValueRef (IORef Object)
+
+-- | An object on the heap.  Functions that modify objects can write
+-- to the IORef pointing to us.
+data Object
+  = ObjectArray [Value]
 
 data VType
   = VTypeNumber
@@ -86,6 +103,9 @@ evalExpr (ExprCall f as) = do
 evalExpr (ExprFunc ps body) = do
   env <- get
   pure (ValueClosure env ps body)
+evalExpr (ExprArray exprs) = do
+  exprs' <- traverse evalExpr exprs
+  undefined
 
 evalBinop :: Binop -> Value -> Value -> Interpreter Value
 evalBinop BinopPlus x y = do
