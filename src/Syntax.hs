@@ -18,6 +18,7 @@ data Stmt
   = StmtExpr Expr
   | StmtAssign Ident Expr
   | StmtReturn (Maybe Expr)
+  | StmtWhile Expr Block
   deriving (Show)
 
 -- | Binary operations, like arithmetic.
