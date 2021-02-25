@@ -34,6 +34,8 @@ data Expr
     ExprNumber Double
   | -- | A boolean.
     ExprBool Bool
+  | -- | A chain of if, else if, and else statements
+    ExprIfElseChain [(Expr, Block)] (Maybe Block)
   | -- | A binary operation (arithmetic).
     ExprBinop Binop Expr Expr
   | -- | Call a function (really just an expression that evaluates to
@@ -42,6 +44,4 @@ data Expr
   | -- | A lambda: the ident list are the formal parameters, and the
     -- block is the function body.
     ExprFunc [Ident] Block
-  | -- | A literal array.
-    ExprArray [Expr]
   deriving (Show)

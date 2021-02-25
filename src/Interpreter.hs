@@ -106,6 +106,16 @@ evalExpr (ExprFunc ps body) = do
 evalExpr (ExprArray exprs) = do
   exprs' <- traverse evalExpr exprs
   undefined
+evalExpr (ExprIfElseChain [] els) = do
+  evalExpr els
+evalExpr (ExprIfElseChain (x:xs) els) = do
+  conditionValue <- evalExpr (first x)
+  conditionBool <- checkBool conditionValue
+  if conditionBool 
+    then evalExpr (second x)
+    else evalExpr (ExprIfElseChain xs els)
+
+
 
 evalBinop :: Binop -> Value -> Value -> Interpreter Value
 evalBinop BinopPlus x y = do
