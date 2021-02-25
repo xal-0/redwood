@@ -5,6 +5,7 @@ module Interpreter where
 import Control.Monad.Except
 import Control.Monad.State
 import Data.IORef
+import Data.List
 import qualified Data.Map as M
 import Syntax
 
@@ -66,7 +67,7 @@ data Error
 type Interpreter a = StateT Env (ExceptT Error IO) a
 
 testBlock :: Block
-testBlock = [StmtWhile (ExprBool False) []]
+testBlock = [StmtExpr (ExprIfElseChain [] Nothing)]
 
 testInterpret :: Block -> IO (Either Error Value)
 testInterpret b = runExceptT (evalStateT (evalBlock b) initialEnv)
@@ -124,7 +125,8 @@ evalExpr (ExprFunc ps body) = do
   pure (ValueClosure env ps body)
 evalExpr (ExprArray exprs) = do
   exprs' <- traverse evalExpr exprs
-  undefined
+  ref <- liftIO (newIORef (ObjectArray exprs'))
+  pure (ValueRef ref)
 evalExpr (ExprIfElseChain [] Nothing) = pure ValueNull
 evalExpr (ExprIfElseChain [] (Just els)) = evalBlock els
 evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
@@ -152,6 +154,12 @@ showValue (ValueBool b) = pure (if b then "true" else "false")
 showValue (ValueClosure _ _ _) = pure "<closure>"
 showValue ValueNull = pure "null"
 showValue (ValuePrim p) = pure "<primitive>"
+showValue (ValueRef r) = do
+  obj <- liftIO (readIORef r)
+  case obj of
+    ObjectArray values -> do
+      strs <- traverse showValue values
+      pure ("[" ++ intercalate ", " strs ++ "]")
 
 checkNumber :: Value -> Interpreter Double
 checkNumber (ValueNumber n) = pure n
