@@ -8,6 +8,7 @@ import Data.IORef
 import Data.List
 import qualified Data.Map as M
 import Syntax
+import Utils
 
 newtype Env = Env (M.Map Ident Value)
 
@@ -17,6 +18,7 @@ newtype Env = Env (M.Map Ident Value)
 data Value
   = ValueNumber Double
   | ValueBool Bool
+  | ValueString String
   | -- | A closure.  When you evaluate a functione expression, it
     -- | closes over its local envinrionment and returns it in one of
     -- | these (lexical scope).
@@ -32,10 +34,25 @@ data Value
   | -- | A builtin value, like print.
     ValuePrim Prim
 
+instance Eq Value where
+  ValueNumber x == ValueNumber y = x == y
+  ValueBool x == ValueBool y = x == y
+  ValueString x == ValueString y = x == y
+  ValueNull == ValueNull = True
+  _ == _ = error "equality is not defined on function or reference types"
+
+instance Ord Value where
+  ValueNumber x `compare` ValueNumber y = x `compare` y
+  ValueBool x `compare` ValueBool y = x `compare` y
+  ValueString x `compare` ValueString y = x `compare` y
+  ValueNull `compare` ValueNull = EQ
+  _ `compare` _ = error "equality is not defined on function or reference types"
+
 -- | An object on the heap.  Functions that modify objects can write
 -- to the IORef pointing to us.
 data Object
   = ObjectArray [Value]
+  | ObjectDict (M.Map Value Value)
 
 -- | A built-in value, like the print function.
 data Prim
@@ -63,6 +80,8 @@ data Error
   | ErrType VType VType
   | ErrArgs Int Int
   | ErrAssign
+  | ErrKey
+  | ErrIndex
   deriving (Show)
 
 type Interpreter a = StateT Env (ExceptT Error IO) a
@@ -137,6 +156,19 @@ evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
   if conditionBool
     then evalBlock body
     else evalExpr (ExprIfElseChain xs els)
+evalExpr (ExprIndex ref index) = do
+  ref' <- evalExpr ref >>= checkRef
+  index' <- evalExpr index
+  obj <- liftIO (readIORef ref')
+  case obj of
+    ObjectArray a -> do
+      i <- checkNumber index'
+      if i /= fromIntegral (round i)
+        then throwError ErrIndex 
+        else maybe (throwError ErrIndex) pure (a !!? round i)
+    ObjectDict d -> do
+      checkKey index'
+      maybe (throwError ErrIndex) pure (M.lookup index' d)
 
 evalPrim :: Prim -> [Value] -> Interpreter Value
 evalPrim PrimPrint as = do
@@ -170,6 +202,17 @@ checkNumber v = throwError (ErrType VTypeNumber (valueType v))
 checkBool :: Value -> Interpreter Bool
 checkBool (ValueBool n) = pure n
 checkBool v = throwError (ErrType VTypeBool (valueType v))
+
+checkRef :: Value -> Interpreter (IORef Object)
+checkRef (ValueRef r) = pure r
+checkRef v = throwError (ErrType VTypeBool (valueType v))
+
+-- | Make sure that the value is a key type.
+checkKey :: Value -> Interpreter ()
+checkKey (ValueNumber _) = pure ()
+checkKey (ValueString _) = pure ()
+checkKey ValueNull = pure ()
+checkKey _ = throwError ErrKey
 
 valueType :: Value -> VType
 valueType (ValueNumber _) = VTypeNumber
