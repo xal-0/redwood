@@ -125,16 +125,14 @@ evalExpr (ExprFunc ps body) = do
 evalExpr (ExprArray exprs) = do
   exprs' <- traverse evalExpr exprs
   undefined
-evalExpr (ExprIfElseChain [] els) = do
-  evalExpr els
-evalExpr (ExprIfElseChain (x:xs) els) = do
-  conditionValue <- evalExpr (first x)
+evalExpr (ExprIfElseChain [] Nothing) = pure ValueNull
+evalExpr (ExprIfElseChain [] (Just els)) = evalBlock els
+evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
+  conditionValue <- evalExpr cond
   conditionBool <- checkBool conditionValue
-  if conditionBool 
-    then evalExpr (second x)
+  if conditionBool
+    then evalBlock body
     else evalExpr (ExprIfElseChain xs els)
-
-
 
 evalPrim :: Prim -> [Value] -> Interpreter Value
 evalPrim PrimPrint as = do
