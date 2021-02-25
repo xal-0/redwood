@@ -24,7 +24,7 @@ stmt =
 
 stmtAssignment :: Parser Stmt
 stmtAssignment =
-  StmtAssign <$> identifier
+  StmtAssign <$> expr
     <*> (symbol "=" *> expr)
  
 stmtReturn :: Parser Stmt
@@ -33,7 +33,7 @@ stmtReturn = symbol "return" *> (StmtReturn <$> optional expr)
 stmtFuncDef :: Parser Stmt
 stmtFuncDef =
   symbol "func"
-    *> (StmtAssign <$> identifier <*> (ExprFunc <$> funcArgs <*> stmtBlock))
+    *> (StmtAssign <$> (ExprVariable <$> identifier) <*> (ExprFunc <$> funcArgs <*> stmtBlock))
 
 funcArgs :: Parser [Ident]
 funcArgs = parens (identifier `sepBy` symbol ",")
