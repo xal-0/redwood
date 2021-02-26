@@ -1,10 +1,10 @@
 module Runtime where
 
+import Control.Monad.Except
+import Control.Monad.Reader
 import Data.IORef
 import qualified Data.Map as M
 import Syntax
-import Control.Monad.Reader
-import Control.Monad.Except
 
 newtype Interpreter = Interpreter (IORef Env)
 

@@ -127,7 +127,7 @@ evalFor _ Nothing v _ = ErrType VTypeArray <$> valueType v >>= throwError
 evalFor key (Just value) (ValueRef r) body = do
   obj <- liftIO (readIORef r)
   pairs <- case obj of
-    ObjectArray a -> pure (zip (fmap ValueNumber [0..]) a)
+    ObjectArray a -> pure (zip (fmap ValueNumber [0 ..]) a)
     ObjectDict d -> pure (M.toList d)
   traverse_ (\(k, v) -> evalScope [(value, v), (key, k)] body) pairs
 evalFor _ (Just _) v _ = ErrType VTypeDict <$> valueType v >>= throwError
