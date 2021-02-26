@@ -2,6 +2,7 @@ module Interpreter where
 
 import Control.Monad.Except
 import Control.Monad.Reader
+import Data.Foldable
 import Data.IORef
 import Data.List
 import qualified Data.Map as M
@@ -26,7 +27,8 @@ runInterpret (Interpreter ref) int = do
   result <- runExceptT (runReaderT int ref)
   case result of
     Left err -> do
-      print err
+      Right str <- runExceptT (runReaderT (showError err) ref)
+      putStrLn ("error: " ++ str)
       pure Nothing
     Right a -> pure (Just a)
 
@@ -46,7 +48,10 @@ evalCall interpreter var =
 -- these bindings in their environment when they start.
 initialPrims :: [(Ident, Prim)]
 initialPrims =
-  [ ("print", evalPrint)
+  [ ("println", evalPrint True),
+    ("print", evalPrint False),
+    ("push", evalPush),
+    ("delete", evalDelete)
   ]
 
 apply :: IORef Env -> [Ident] -> Block -> [Value] -> Interpret Value
@@ -59,6 +64,13 @@ apply env params body args
     env' <- liftIO (newIORef (Env argBinds (Just env)))
     local (const env') (evalBlock body)
 
+evalScope :: [(Ident, Value)] -> Block -> Interpret Value
+evalScope binds block = do
+  parent <- ask
+  let env = Env (M.fromList binds) (Just parent)
+  env' <- liftIO (newIORef env)
+  local (const env') (evalBlock block)
+
 evalBlock :: Block -> Interpret Value
 evalBlock [] = pure ValueNull
 evalBlock (s@(StmtReturn _) : _) = evalStmt s
@@ -70,8 +82,12 @@ evalStmt s@(StmtWhile condition conditional) = do
   conditionValue <- evalExpr condition
   conditionBool <- checkBool conditionValue
   if conditionBool
-    then evalBlock conditional >> evalStmt s
+    then evalScope [] conditional >> evalStmt s
     else pure ValueNull
+evalStmt (StmtFor k v e b) = do
+  e' <- evalExpr e
+  evalFor k v e' b
+  pure ValueNull
 evalStmt (StmtExpr e) = evalExpr e
 evalStmt (StmtFunc v ps body) =
   evalStmt (StmtAssign (ExprVariable v) (ExprFunc ps body))
@@ -79,8 +95,9 @@ evalStmt (StmtAssign (ExprVariable v) e) = do
   e' <- evalExpr e
   modifyEnv v e'
   pure ValueNull
-evalStmt (StmtAssign (ExprIndex ref index) e) = do
-  ref' <- evalExpr ref >>= checkRef
+evalStmt (StmtAssign (ExprIndex indexable index) e) = do
+  indexable' <- evalExpr indexable
+  ref' <- checkRef indexable'
   index' <- evalExpr index
   obj <- liftIO (readIORef ref')
   e' <- evalExpr e
@@ -88,7 +105,7 @@ evalStmt (StmtAssign (ExprIndex ref index) e) = do
     ObjectArray a -> do
       i <- checkInt index'
       case replaceIdx a i e' of
-        Nothing -> throwError ErrIndex
+        Nothing -> throwError (ErrIndex indexable' index')
         Just a' -> do
           liftIO (writeIORef ref' (ObjectArray a'))
     ObjectDict d -> do
@@ -99,6 +116,21 @@ evalStmt (StmtAssign (ExprIndex ref index) e) = do
 evalStmt (StmtAssign _ _) = throwError ErrAssign
 evalStmt (StmtReturn Nothing) = pure ValueNull
 evalStmt (StmtReturn (Just r)) = evalExpr r
+
+evalFor :: Ident -> Maybe Ident -> Value -> Block -> Interpret ()
+evalFor value Nothing (ValueRef r) body = do
+  obj <- liftIO (readIORef r)
+  case obj of
+    ObjectArray a -> traverse_ (\v -> evalScope [(value, v)] body) a
+    _ -> throwError (ErrType VTypeArray (objectType obj))
+evalFor _ Nothing v _ = ErrType VTypeArray <$> valueType v >>= throwError
+evalFor key (Just value) (ValueRef r) body = do
+  obj <- liftIO (readIORef r)
+  pairs <- case obj of
+    ObjectArray a -> pure (zip (fmap ValueNumber [0 ..]) a)
+    ObjectDict d -> pure (M.toList d)
+  traverse_ (\(k, v) -> evalScope [(value, v), (key, k)] body) pairs
+evalFor _ (Just _) v _ = ErrType VTypeDict <$> valueType v >>= throwError
 
 evalExpr :: Expr -> Interpret Value
 evalExpr (ExprVariable v) = lookupEnv v
@@ -118,7 +150,7 @@ evalExpr (ExprCall f as) = do
   case f' of
     ValueClosure env params body -> apply env params body as'
     ValuePrim p -> p as'
-    _ -> throwError (ErrType VTypeClosure (valueType f'))
+    _ -> ErrType VTypeClosure <$> valueType f' >>= throwError
 evalExpr (ExprFunc ps body) = do
   env <- ask
   pure (ValueClosure env ps body)
@@ -133,33 +165,69 @@ evalExpr (ExprDict entries) = do
   where
     evalEntry (k, v) = (,) <$> evalExpr k <*> evalExpr v
 evalExpr (ExprIfElseChain [] Nothing) = pure ValueNull
-evalExpr (ExprIfElseChain [] (Just els)) = evalBlock els
+evalExpr (ExprIfElseChain [] (Just els)) = evalScope [] els
 evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
   conditionValue <- evalExpr cond
   conditionBool <- checkBool conditionValue
   if conditionBool
-    then evalBlock body
+    then evalScope [] body
     else evalExpr (ExprIfElseChain xs els)
-evalExpr (ExprIndex ref index) = do
-  obj <- evalExpr ref >>= checkRef >>= liftIO . readIORef
+evalExpr (ExprIndex x index) = do
+  x' <- evalExpr x
   index' <- evalExpr index
-  case obj of
-    ObjectArray a -> do
+  let err = maybe (throwError (ErrIndex x' index')) pure
+  case x' of
+    ValueString s -> do
       i <- checkInt index'
-      maybe (throwError ErrIndex) pure (a !!? i)
-    ObjectDict d -> do
-      _ <- checkKey index'
-      maybe (throwError ErrIndex) pure (M.lookup index' d)
+      c <- maybe (throwError (ErrIndex x' index')) pure (s !!? i)
+      pure (ValueString [c])
+    ValueRef ref -> do
+      obj <- liftIO (readIORef ref)
+      case obj of
+        ObjectArray a -> do
+          i <- checkInt index'
+          maybe (throwError (ErrIndex x' index')) pure (a !!? i)
+        ObjectDict d -> do
+          _ <- checkKey index'
+          err (M.lookup index' d)
+    _ -> err Nothing
 
-evalPrint :: [Value] -> Interpret Value
-evalPrint as = do
+evalPrint :: Bool -> Prim
+evalPrint nl as = do
   strs <- traverse showValue as
-  liftIO (putStrLn (concat strs))
+  liftIO (putStr (concat strs))
+  liftIO (if nl then putStrLn "" else pure ())
   pure ValueNull
+
+evalPush :: Prim
+evalPush [ValueRef r, x] = do
+  o <- liftIO (readIORef r)
+  case o of
+    ObjectArray a -> liftIO (writeIORef r (ObjectArray (a ++ [x])))
+    _ -> throwError (ErrMismatch VTypeArray (objectType o))
+  pure ValueNull
+evalPush _ = throwError (ErrMisc "wrong arguments for push")
+
+evalDelete :: Prim
+evalDelete [ValueRef r, x] = do
+  o <- liftIO (readIORef r)
+  case o of
+    ObjectArray a -> do
+      i <- checkInt x
+      if i >= length a
+        then throwError (ErrIndex (ValueRef r) x)
+        else liftIO (writeIORef r (ObjectArray (take i a ++ drop (i + 1) a)))
+    ObjectDict d -> do
+      _ <- checkKey x
+      if M.member x d
+        then liftIO (writeIORef r (ObjectDict (M.delete x d)))
+        else throwError (ErrIndex (ValueRef r) x)
+  pure ValueNull
+evalDelete _ = throwError (ErrMisc "wrong arguments for delete")
 
 -- operations between two values
 evalBinop :: Binop -> Value -> Value -> Interpret Value
-evalBinop BinopPlus x y = binopCheck checkNumber ValueNumber (+) x y
+evalBinop BinopPlus x y = addOrAppend x y
 evalBinop BinopMinus x y = binopCheck checkNumber ValueNumber (-) x y
 evalBinop BinopExp x y = binopCheck checkNumber ValueNumber (**) x y
 evalBinop BinopMult x y = binopCheck checkNumber ValueNumber (*) x y
@@ -169,10 +237,45 @@ evalBinop BinopLessThan x y = binopCheck checkKey ValueBool (<) x y
 evalBinop BinopGreaterThan x y = binopCheck checkKey ValueBool (>) x y
 evalBinop BinopGreaterThanEq x y = binopCheck checkKey ValueBool (>=) x y
 evalBinop BinopLessThanEq x y = binopCheck checkKey ValueBool (<=) x y
-evalBinop BinopEq x y = binopCheck checkKey ValueBool (==) x y
-evalBinop BinopNotEq x y = binopCheck checkKey ValueBool (/=) x y
+evalBinop BinopEq x y = fmap ValueBool (deepEquals x y)
+evalBinop BinopNotEq x y = fmap (ValueBool . not) (deepEquals x y)
 evalBinop BinopAnd x y = binopCheck checkBool ValueBool (&&) x y
 evalBinop BinopOr x y = binopCheck checkBool ValueBool (||) x y
+
+deepEquals :: Value -> Value -> Interpret Bool
+deepEquals (ValueNumber x) (ValueNumber y) = pure (x == y)
+deepEquals (ValueBool x) (ValueBool y) = pure (x == y)
+deepEquals (ValueString x) (ValueString y) = pure (x == y)
+deepEquals ValueNull ValueNull = pure True
+deepEquals (ValueRef x) (ValueRef y) = do
+  x' <- liftIO (readIORef x)
+  y' <- liftIO (readIORef y)
+  objEquals x' y'
+  where
+    objEquals (ObjectArray ax) (ObjectArray ay) =
+      fmap and (traverse (uncurry deepEquals) (zip ax ay))
+    objEquals (ObjectDict dx) (ObjectDict dy) =
+      let eq ((k1, v1), (k2, v2)) = fmap (k1 == k2 &&) (deepEquals v1 v2)
+          pairs = zip (M.toAscList dx) (M.toAscList dy)
+       in fmap and (traverse eq pairs)
+    objEquals o1 o2 = throwError (ErrType (objectType o1) (objectType o2))
+deepEquals x y = ErrType <$> valueType x <*> valueType y >>= throwError
+
+addOrAppend :: Value -> Value -> Interpret Value
+addOrAppend (ValueNumber x) (ValueNumber y) = pure (ValueNumber (x + y))
+addOrAppend (ValueString x) (ValueString y) = pure (ValueString (x ++ y))
+addOrAppend (ValueRef x) (ValueRef y) = do
+  x' <- liftIO (readIORef x)
+  y' <- liftIO (readIORef y)
+  o <- objAppend x' y'
+  r <- liftIO (newIORef o)
+  pure (ValueRef r)
+  where
+    objAppend :: Object -> Object -> Interpret Object
+    objAppend (ObjectArray ax) (ObjectArray ay) = pure (ObjectArray (ax ++ ay))
+    objAppend (ObjectDict dx) (ObjectDict dy) = pure (ObjectDict (dx `M.union` dy))
+    objAppend o1 o2 = throwError (ErrType (objectType o1) (objectType o2))
+addOrAppend x y = ErrType <$> valueType x <*> valueType y >>= throwError
 
 -- operations on one value
 evalMonop :: Monop -> Value -> Interpret Value
@@ -193,8 +296,9 @@ binopCheck ::
 binopCheck check result op x y = do
   x' <- check x
   y' <- check y
-  if valueType x /= valueType y
-    then throwError (ErrType (valueType x) (valueType y))
+  notSameType <- (/=) <$> valueType x <*> valueType y
+  if notSameType
+    then ErrType <$> valueType x <*> valueType y >>= throwError
     else pure ()
   pure (result (x' `op` y'))
 
@@ -263,35 +367,53 @@ showValue (ValueRef r) = do
 
 checkNumber :: Value -> Interpret Double
 checkNumber (ValueNumber n) = pure n
-checkNumber v = throwError (ErrType VTypeNumber (valueType v))
+checkNumber v = ErrType VTypeNumber <$> valueType v >>= throwError
 
 checkInt :: Value -> Interpret Int
 checkInt x = do
   num <- checkNumber x
   if num /= fromIntegral (round num :: Int)
-    then throwError ErrIndex
+    then throwError (ErrMisc "expected an integer index")
     else pure (round num)
 
 checkBool :: Value -> Interpret Bool
 checkBool (ValueBool n) = pure n
-checkBool v = throwError (ErrType VTypeBool (valueType v))
+checkBool v = ErrType VTypeBool <$> valueType v >>= throwError
 
 checkRef :: Value -> Interpret (IORef Object)
 checkRef (ValueRef r) = pure r
-checkRef v = throwError (ErrType VTypeBool (valueType v))
+checkRef v = ErrType VTypeBool <$> valueType v >>= throwError
 
 -- | Make sure that the value is a key type.
 checkKey :: Value -> Interpret Value
 checkKey v@(ValueNumber _) = pure v
 checkKey v@(ValueString _) = pure v
 checkKey ValueNull = pure ValueNull
-checkKey _ = throwError ErrKey
+checkKey _ = throwError (ErrMisc "expected an (immutable) key type")
 
-valueType :: Value -> VType
-valueType (ValueNumber _) = VTypeNumber
-valueType (ValueBool _) = VTypeBool
-valueType (ValueString _) = VTypeString
-valueType ValueClosure {} = VTypeClosure
-valueType ValueNull = VTypeNull
-valueType (ValueRef _) = VTypeRef -- TODO
-valueType (ValuePrim _) = VTypePrim
+valueType :: Value -> Interpret VType
+valueType (ValueNumber _) = pure VTypeNumber
+valueType (ValueBool _) = pure VTypeBool
+valueType (ValueString _) = pure VTypeString
+valueType ValueClosure {} = pure VTypeClosure
+valueType ValueNull = pure VTypeNull
+valueType (ValuePrim _) = pure VTypePrim
+valueType (ValueRef r) = do
+  o <- liftIO (readIORef r)
+  pure (objectType o)
+
+objectType :: Object -> VType
+objectType (ObjectArray _) = VTypeArray
+objectType (ObjectDict _) = VTypeDict
+
+showError :: Error -> Interpret String
+showError (ErrLookup v) = pure ("unknown variable " ++ v)
+showError (ErrMismatch t1 t2) = pure ("mismatched types: " ++ show t1 ++ " and " ++ show t2)
+showError (ErrType t1 t2) = pure ("expected " ++ show t1 ++ ", got " ++ show t2)
+showError (ErrArgs expected got) = pure ("expected " ++ show expected ++ " arguments, got " ++ show got)
+showError ErrAssign = pure "malformed assignment (must be to a variable, index, or field)"
+showError (ErrIndex x i) = do
+  xs <- showValue x
+  is <- showValue i
+  pure ("index " ++ is ++ " does not exist in " ++ xs)
+showError (ErrMisc misc) = pure misc

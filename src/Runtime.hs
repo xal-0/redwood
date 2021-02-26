@@ -1,10 +1,10 @@
 module Runtime where
 
+import Control.Monad.Except
+import Control.Monad.Reader
 import Data.IORef
 import qualified Data.Map as M
 import Syntax
-import Control.Monad.Reader
-import Control.Monad.Except
 
 newtype Interpreter = Interpreter (IORef Env)
 
@@ -62,15 +62,26 @@ data VType
   | VTypeString
   | VTypeClosure
   | VTypeNull
-  | VTypeRef
   | VTypePrim
-  deriving (Show, Eq)
+  | VTypeArray
+  | VTypeDict
+  deriving (Eq)
+
+instance Show VType where
+  show VTypeNumber = "number"
+  show VTypeBool = "bool"
+  show VTypeString = "string"
+  show VTypeClosure = "closure"
+  show VTypeNull = "null"
+  show VTypePrim = "primitive"
+  show VTypeArray = "array"
+  show VTypeDict = "dictionary"
 
 data Error
   = ErrLookup Ident
+  | ErrMismatch VType VType
   | ErrType VType VType
   | ErrArgs Int Int
   | ErrAssign
-  | ErrKey
-  | ErrIndex
-  deriving (Show)
+  | ErrIndex Value Value
+  | ErrMisc String

@@ -22,6 +22,7 @@ data Stmt
     StmtAssign Expr Expr
   | StmtReturn (Maybe Expr)
   | StmtWhile Expr Block
+  | StmtFor Ident (Maybe Ident) Expr Block
   | -- | Defines a function with the given name, which is possibly
     -- recursive.
     StmtFunc Ident [Ident] Block

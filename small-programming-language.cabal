@@ -20,3 +20,4 @@ executable small-programming-language
                      , Syntax
                      , Utils
                      , Runtime
+                     , Graphics
