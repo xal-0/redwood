@@ -185,6 +185,12 @@ evalExpr (ExprArray exprs) = do
   exprs' <- traverse evalExpr exprs
   ref <- liftIO (newIORef (ObjectArray exprs'))
   pure (ValueRef ref)
+evalExpr (ExprDict entries) = do
+  entries' <- traverse evalEntry entries
+  ref <- liftIO (newIORef (ObjectDict (M.fromList entries')))
+  pure (ValueRef ref)
+  where
+    evalEntry (k, v) = (,) <$> evalExpr k <*> evalExpr v
 evalExpr (ExprIfElseChain [] Nothing) = pure ValueNull
 evalExpr (ExprIfElseChain [] (Just els)) = evalBlock els
 evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
@@ -291,7 +297,7 @@ checkNumber v = throwError (ErrType VTypeNumber (valueType v))
 checkInt :: Value -> Interpreter Int
 checkInt x = do
   num <- checkNumber x
-  if num /= fromIntegral (round num)
+  if num /= fromIntegral (round num :: Int)
     then throwError ErrIndex
     else pure (round num)
 

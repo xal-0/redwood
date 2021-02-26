@@ -42,7 +42,6 @@ data Binop
   | BinopMult
   | BinopDiv
   | BinopMod
-  | BinopPow
   | BinopExp
   deriving (Show)
 
