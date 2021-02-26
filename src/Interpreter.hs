@@ -70,8 +70,10 @@ initialEnv =
 data VType
   = VTypeNumber
   | VTypeBool
+  | VTypeString
   | VTypeClosure
   | VTypeNull
+  | VTypeRef
   | VTypePrim
   deriving (Show, Eq)
 
@@ -276,6 +278,9 @@ checkKey _ = throwError ErrKey
 
 valueType :: Value -> VType
 valueType (ValueNumber _) = VTypeNumber
+valueType (ValueBool _) = VTypeBool
+valueType (ValueString _) = VTypeString
 valueType ValueClosure {} = VTypeClosure
 valueType ValueNull = VTypeNull
+valueType (ValueRef _) = VTypeRef -- TODO
 valueType (ValuePrim _) = VTypePrim
