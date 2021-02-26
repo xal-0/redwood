@@ -1,3 +1,21 @@
-y = true
-print (y)
-print (!y)
+x = 0
+y = 0
+
+vel = 5
+
+func update() {
+  if key("up") {
+    y = y + vel
+  }
+  if key("down") {
+    y = y - vel
+  }
+  if key("left") {
+    x = x - vel
+  }
+  if key("right") {
+    x = x + vel
+  }
+
+  circle(10, x, y)
+}
