@@ -5,10 +5,11 @@ author:              Connor Cahoon, Sam Schweigel
 build-type:          Simple
 
 executable small-programming-language
-  main-is:             Main.hs
+  main-is:             Graphics.hs
   build-depends:       base >=4.14 && <4.15
                      , containers
                      , megaparsec
+                     , gloss == 1.13.2.1
                      , mtl >= 2.2.2
                      , parser-combinators
   hs-source-dirs:      src
