@@ -60,7 +60,6 @@ expr :: Parser Expr
 expr = label "expression" $ makeExprParser term ops
   where
     ops =
-<<<<<<< HEAD
       [ [ Postfix manyCall],
         [ prefix "-" MonopNeg,
           prefix "!" MonopNot],
