@@ -244,7 +244,7 @@ binopCheck check result op x y = do
 
 showValue :: Value -> Interpreter String
 showValue (ValueNumber n) = pure (show n)
-showValue (ValueString n) = pure (show n)
+showValue (ValueString n) = pure n
 showValue (ValueBool b) = pure (if b then "true" else "false")
 showValue (ValueClosure _ _ _) = pure "<closure>"
 showValue ValueNull = pure "null"
