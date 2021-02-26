@@ -55,16 +55,20 @@ stmtBlock = braces stmts
 stmts :: Parser Block
 stmts = stmt `sepEndBy` some (lexeme newline)
 
+-- finds any operations between 2 operators
 expr :: Parser Expr
 expr = label "expression" $ makeExprParser term ops
   where
     ops =
-      [ [ Postfix manyCall
-        ],
-        [ binary "+" BinopPlus
-        ],
-        [ binary "==" BinopEq
-        ]
+      [ [ Postfix manyCall],
+        [ binary "+" BinopPlus],
+        [ binary "-" BinopPlus],
+        [ binary "<=" BinopLessThanEq],
+        [ binary ">=" BinopGreaterThanEq],
+        [ binary "<" BinopLessThan],
+        [ binary ">" BinopGreaterThan],
+        [ binary "==" BinopEq],
+        [ binary "!=" BinopNotEq]
       ]
 
     manyCall = foldr1 (.) <$> some call
@@ -86,10 +90,10 @@ term =
 
 -- exprIfElseChain :: Parser Expr
 -- exprIfElseChain =
---   symbol "if" *> (ExprIfElseChain <$> many exprElseIf <*> optional exprElse)
+--   symbol "if" *> (ExprIfElseChain <$> many exprElseIf)
 
 -- exprElseIf :: Parser Expr
--- exprElseIf = symbol "else if" *> (ExprFunc <$> parens expr) <*> stmtBlock
+-- exprElseIf = symbol "else if" *> (parens expr <*> stmtBlock)
 
 -- exprElse :: Parser Expr
 -- exprElse = symbol "else" *> stmtBlock
