@@ -39,7 +39,7 @@ stmtWhile =
 stmtFuncDef :: Parser Stmt
 stmtFuncDef =
   symbol "func"
-    *> (StmtAssign <$> (ExprVariable <$> identifier) <*> (ExprFunc <$> funcArgs <*> stmtBlock))
+    *> (StmtFunc <$> identifier <*> funcArgs <*> stmtBlock)
 
 funcArgs :: Parser [Ident]
 funcArgs = parens (identifier `sepBy` symbol ",")

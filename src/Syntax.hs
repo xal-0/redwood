@@ -17,16 +17,19 @@ type Block = [Stmt]
 data Stmt
   = StmtExpr Expr
   | -- | The left side is an expression, but only a few expressions
-    -- | are allowed there (a variable, an array access, or a
-    -- | dictionary access.)
+    -- are allowed there (a variable, an array access, or a
+    -- dictionary access.)
     StmtAssign Expr Expr
   | StmtReturn (Maybe Expr)
   | StmtWhile Expr Block
+  | -- | Defines a function with the given name, which is possibly
+    -- recursive.
+    StmtFunc Ident [Ident] Block
   deriving (Show)
 
 -- | Binary operations, like arithmetic.
-data Binop 
-  = BinopPlus 
+data Binop
+  = BinopPlus
   | BinopMinus
   | BinopLessThan
   | BinopGreaterThan
