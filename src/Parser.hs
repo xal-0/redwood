@@ -84,15 +84,15 @@ term =
         parens expr
       ]
 
-exprIfElseChain :: Parser Expr
-exprIfElseChain =
-  symbol "if" *> (ExprIfElseChain <$> many exprElseIf <*> optional exprElse)
+-- exprIfElseChain :: Parser Expr
+-- exprIfElseChain =
+--   symbol "if" *> (ExprIfElseChain <$> many exprElseIf <*> optional exprElse)
 
-exprElseIf :: Parser Expr
-exprElseIf = symbol "else if" *> (ExprFunc <$> parens expr) <*> stmtBlock
+-- exprElseIf :: Parser Expr
+-- exprElseIf = symbol "else if" *> (ExprFunc <$> parens expr) <*> stmtBlock
 
-exprElse :: Parser Expr
-exprElse = symbol "else" *> stmtBlock
+-- exprElse :: Parser Expr
+-- exprElse = symbol "else" *> stmtBlock
 
 exprFunc :: Parser Expr
 exprFunc =
@@ -109,10 +109,9 @@ number =
     integer = fromIntegral <$> L.decimal
     float = L.float
 
--- boolean :: Parser Expr
--- boolean = 
---   label "boolean" $
---     ExprBool <$> ("true" ==)
+boolean :: Parser Expr
+boolean = 
+  label "boolean" $ ExprBool <$> (True <$ symbol "true" <|> False <$ symbol "false")
 
 identifier :: Parser String
 identifier = label "identifier" $
