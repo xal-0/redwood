@@ -60,15 +60,18 @@ expr :: Parser Expr
 expr = label "expression" $ makeExprParser term ops
   where
     ops =
-      [ [ Postfix manyCall],
+      [ [Postfix manyCall],
         [ prefix "-" MonopNeg,
-          prefix "!" MonopNot],
-        [ binary "**" BinopExp],
+          prefix "!" MonopNot
+        ],
+        [binary "**" BinopExp],
         [ binary "*" BinopMult,
-          binary "/" BinopDiv, 
-          binary "%" BinopMod],
-        [ binary "+" BinopPlus, 
-          binary "-" BinopMinus],
+          binary "/" BinopDiv,
+          binary "%" BinopMod
+        ],
+        [ binary "+" BinopPlus,
+          binary "-" BinopMinus
+        ],
         [ binary "<=" BinopLessThanEq,
           binary ">=" BinopGreaterThanEq,
           binary "<" BinopLessThan,
