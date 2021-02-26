@@ -70,6 +70,8 @@ data Error
   = ErrLookup Ident
   | ErrType VType VType
   | ErrArgs Int Int
+  | ErrEq
+  | ErrAdd
   | ErrAssign
   | ErrKey
   | ErrIndex

@@ -46,7 +46,8 @@ evalCall interpreter var =
 -- these bindings in their environment when they start.
 initialPrims :: [(Ident, Prim)]
 initialPrims =
-  [ ("print", evalPrint)
+  [ ("println", evalPrint True),
+    ("print", evalPrint False)
   ]
 
 apply :: IORef Env -> [Ident] -> Block -> [Value] -> Interpret Value
@@ -151,15 +152,16 @@ evalExpr (ExprIndex ref index) = do
       _ <- checkKey index'
       maybe (throwError ErrIndex) pure (M.lookup index' d)
 
-evalPrint :: [Value] -> Interpret Value
-evalPrint as = do
+evalPrint :: Bool -> [Value] -> Interpret Value
+evalPrint nl as = do
   strs <- traverse showValue as
-  liftIO (putStrLn (concat strs))
+  liftIO (putStr (concat strs))
+  liftIO (if nl then putStrLn "" else pure ())
   pure ValueNull
 
 -- operations between two values
 evalBinop :: Binop -> Value -> Value -> Interpret Value
-evalBinop BinopPlus x y = binopCheck checkNumber ValueNumber (+) x y
+evalBinop BinopPlus x y = addOrAppend x y
 evalBinop BinopMinus x y = binopCheck checkNumber ValueNumber (-) x y
 evalBinop BinopExp x y = binopCheck checkNumber ValueNumber (**) x y
 evalBinop BinopMult x y = binopCheck checkNumber ValueNumber (*) x y
@@ -169,10 +171,45 @@ evalBinop BinopLessThan x y = binopCheck checkKey ValueBool (<) x y
 evalBinop BinopGreaterThan x y = binopCheck checkKey ValueBool (>) x y
 evalBinop BinopGreaterThanEq x y = binopCheck checkKey ValueBool (>=) x y
 evalBinop BinopLessThanEq x y = binopCheck checkKey ValueBool (<=) x y
-evalBinop BinopEq x y = binopCheck checkKey ValueBool (==) x y
-evalBinop BinopNotEq x y = binopCheck checkKey ValueBool (/=) x y
+evalBinop BinopEq x y = fmap ValueBool (deepEquals x y)
+evalBinop BinopNotEq x y = fmap (ValueBool . not) (deepEquals x y)
 evalBinop BinopAnd x y = binopCheck checkBool ValueBool (&&) x y
 evalBinop BinopOr x y = binopCheck checkBool ValueBool (||) x y
+
+deepEquals :: Value -> Value -> Interpret Bool
+deepEquals (ValueNumber x) (ValueNumber y) = pure (x == y)
+deepEquals (ValueBool x) (ValueBool y) = pure (x == y)
+deepEquals (ValueString x) (ValueString y) = pure (x == y)
+deepEquals ValueNull ValueNull = pure True
+deepEquals (ValueRef x) (ValueRef y) = do
+  x' <- liftIO (readIORef x)
+  y' <- liftIO (readIORef y)
+  objEquals x' y'
+  where
+    objEquals (ObjectArray ax) (ObjectArray ay) =
+      fmap and (traverse (uncurry deepEquals) (zip ax ay))
+    objEquals (ObjectDict dx) (ObjectDict dy) =
+      let eq ((k1, v1), (k2, v2)) = fmap (k1 == k2 &&) (deepEquals v1 v2)
+          pairs = zip (M.toAscList dx) (M.toAscList dy)
+       in fmap and (traverse eq pairs)
+    objEquals _ _ = throwError ErrEq
+deepEquals _ _ = throwError ErrEq
+
+addOrAppend :: Value -> Value -> Interpret Value
+addOrAppend (ValueNumber x) (ValueNumber y) = pure (ValueNumber (x + y))
+addOrAppend (ValueString x) (ValueString y) = pure (ValueString (x ++ y))
+addOrAppend (ValueRef x) (ValueRef y) = do
+  x' <- liftIO (readIORef x)
+  y' <- liftIO (readIORef y)
+  o <- objAppend x' y'
+  r <- liftIO (newIORef o)
+  pure (ValueRef r)
+  where
+    objAppend :: Object -> Object -> Interpret Object
+    objAppend (ObjectArray ax) (ObjectArray ay) = pure (ObjectArray (ax ++ ay))
+    objAppend (ObjectDict dx) (ObjectDict dy) = pure (ObjectDict (dx `M.union` dy))
+    objAppend _ _ = throwError ErrAdd
+addOrAppend _ _ = throwError ErrAdd
 
 -- operations on one value
 evalMonop :: Monop -> Value -> Interpret Value

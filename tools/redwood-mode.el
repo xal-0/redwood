@@ -26,8 +26,10 @@
   `(("func\\s-+\\(\\sw+\\)" (1 font-lock-function-name-face)
      ("(\\(\\w+\\)"  nil nil (1 font-lock-variable-name-face))
      (",\s-*\\(\\w+\\)"  nil nil (1 font-lock-variable-name-face)))
-    (,(regexp-opt '("func" "for" "in" "while" "if" "else" "return")) . font-lock-keyword-face)
-    (,(regexp-opt '("null" "true" "false")) . font-lock-constant-face)))
+    (,(regexp-opt '("func\s" "for\s" "in\s" "while\s" "if\s" "else\s" "return\s"))
+     . font-lock-keyword-face)
+    (,(regexp-opt '("null\s" "true\s" "false\s")) . font-lock-constant-face)
+    (,(regexp-opt '("^\\(print\\)$")) 1 font-lock-builtin-face)))
 
 (defvar redwood-mode-syntax-table
   (let ((syntax-table (make-syntax-table)))

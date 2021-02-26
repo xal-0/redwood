@@ -1,4 +1,4 @@
-module Parser where
+module Parser (parseBlock) where
 
 import Control.Monad
 import Control.Monad.Combinators.Expr
@@ -13,7 +13,7 @@ type Parser = Parsec Void String
 parseBlock :: String -> IO (Maybe Block)
 parseBlock path = do
   contents <- readFile path
-  case parse (stmts <* eof) path contents of
+  case parse (sc' *> stmts <* eof) path contents of
     Left err -> do
       putStrLn (errorBundlePretty err)
       pure Nothing
@@ -58,7 +58,7 @@ stmtBlock = braces stmts
   where
     braces =
       between
-        (symbol "{" *> many (lexeme newline))
+        (symbol "{" *> sc')
         (symbol "}")
 
 stmts :: Parser Block
@@ -167,17 +167,17 @@ str =
 
 array :: Parser Expr
 array = label "array" $ do
-  symbol "[" <* many newline
+  symbol "[" <* sc'
   a <- expr `sepBy` commaNewline
-  void (many newline)
+  void sc'
   symbol "]"
   pure (ExprArray a)
 
 dictionary :: Parser Expr
 dictionary = label "dictionary" $ do
-  symbol "{" <* many newline
+  symbol "{" <* sc'
   entries <- entry `sepBy` commaNewline
-  void (many newline)
+  void sc'
   symbol "}"
   pure (ExprDict entries)
   where
@@ -185,7 +185,7 @@ dictionary = label "dictionary" $ do
     key = ExprString <$> identifier <|> expr
 
 commaNewline :: Parser ()
-commaNewline = void (symbol "," *> many newline)
+commaNewline = void (symbol "," *> sc')
 
 identifier :: Parser String
 identifier = label "identifier" $
@@ -211,7 +211,13 @@ identifier = label "identifier" $
       ]
 
 sc :: Parser ()
-sc = L.space hspace1 empty empty
+sc = L.space hspace1 lineComment empty
+
+sc' :: Parser ()
+sc' = L.space space1 lineComment empty
+
+lineComment :: Parser ()
+lineComment = L.skipLineComment "#"
 
 symbol :: String -> Parser ()
 symbol s = void (L.symbol sc s)
