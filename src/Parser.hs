@@ -84,13 +84,14 @@ term =
     choice
       [ number,
         exprFunc,
+        str,
         variable,
         parens expr
       ]
 
 -- exprIfElseChain :: Parser Expr
 -- exprIfElseChain =
---   symbol "if" *> (ExprIfElseChain <$> many exprElseIf)
+--   symbol "if" *> (ExprIfElseChain <$> exprElse)
 
 -- exprElseIf :: Parser Expr
 -- exprElseIf = symbol "else if" *> (parens expr <*> stmtBlock)
@@ -116,6 +117,11 @@ number =
 boolean :: Parser Expr
 boolean = 
   label "boolean" $ ExprBool <$> (True <$ symbol "true" <|> False <$ symbol "false")
+
+str :: Parser Expr
+str =
+  label "string" $
+    ExprString <$> (char '"' >> manyTill L.charLiteral (char '"'))
 
 identifier :: Parser String
 identifier = label "identifier" $

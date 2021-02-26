@@ -70,6 +70,7 @@ initialEnv =
 data VType
   = VTypeNumber
   | VTypeBool
+  | VTypeString
   | VTypeClosure
   | VTypeNull
   | VTypePrim
@@ -160,6 +161,7 @@ evalExpr (ExprVariable v) = do
   Env m <- get
   maybe (throwError (ErrLookup v)) pure (M.lookup v m)
 evalExpr (ExprNumber n) = pure (ValueNumber n)
+evalExpr (ExprString n) = pure (ValueString n)
 evalExpr (ExprBool n) = pure (ValueBool n)
 evalExpr (ExprBinop op x y) = do
   x' <- evalExpr x
@@ -252,6 +254,7 @@ evalEq a b = throwError (ErrType (valueType a) (valueType b))
 
 showValue :: Value -> Interpreter String
 showValue (ValueNumber n) = pure (show n)
+showValue (ValueString n) = pure (show n)
 showValue (ValueBool b) = pure (if b then "true" else "false")
 showValue (ValueClosure _ _ _) = pure "<closure>"
 showValue ValueNull = pure "null"
@@ -291,6 +294,7 @@ checkKey _ = throwError ErrKey
 
 valueType :: Value -> VType
 valueType (ValueNumber _) = VTypeNumber
+valueType (ValueString _) = VTypeString
 valueType ValueClosure {} = VTypeClosure
 valueType ValueNull = VTypeNull
 valueType (ValuePrim _) = VTypePrim

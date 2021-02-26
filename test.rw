@@ -1,4 +1,4 @@
 x = 2
-while x == 2 {
-  print (x)
+while x == x {
+  print ("hello")
 }

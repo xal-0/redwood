@@ -49,6 +49,8 @@ data Expr
     ExprNumber Double
   | -- | A boolean.
     ExprBool Bool
+  | -- | A string.
+    ExprString String
   | -- | A chain of if, else if, and else statements
     ExprIfElseChain [(Expr, Block)] (Maybe Block)
   | -- | A binary operation (arithmetic).
