@@ -18,3 +18,4 @@ executable small-programming-language
                      , Parser
                      , Syntax
                      , Utils
+                     , Runtime
