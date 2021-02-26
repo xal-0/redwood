@@ -73,8 +73,9 @@ data VType
   | VTypeString
   | VTypeClosure
   | VTypeNull
+  | VTypeRef
   | VTypePrim
-  deriving (Show)
+  deriving (Show, Eq)
 
 data Error
   = ErrLookup Ident
@@ -207,66 +208,39 @@ evalPrim PrimPrint as = do
   pure ValueNull
 
 evalBinop :: Binop -> Value -> Value -> Interpreter Value
-evalBinop BinopPlus x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueNumber (x' + y'))
-evalBinop BinopMinus x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueNumber (x' - y'))
-evalBinop BinopLessThan x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueBool (x' < y'))
-evalBinop BinopGreaterThan x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueBool (x' > y'))
-evalBinop BinopLessThanEq x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueBool (x' <= y'))
-evalBinop BinopGreaterThanEq x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueBool (x' >= y'))
-evalBinop BinopEq x y = do
-  equiv <- evalEq x y
-  pure (ValueBool equiv)
-evalBinop BinopNotEq x y = do
-  equiv <- evalEq x y
-  pure (ValueBool (not equiv))
-evalBinop BinopAnd x y = do
-  x' <- checkBool x
-  y' <- checkBool y
-  pure (ValueBool (x' && y'))
-evalBinop BinopOr x y = do
-  x' <- checkBool x
-  y' <- checkBool y
-  pure (ValueBool (x' || y'))
-evalBinop BinopMult x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueBool (x' * y'))
-evalBinop BinopDiv x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueBool (x' / y'))
-evalBinop BinopMod x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueBool (x' % y'))
-evalBinop BinopExp x y = do
-  x' <- checkNumber x
-  y' <- checkNumber y
-  pure (ValueBool (x' ** y'))
+evalBinop BinopPlus x y = binopCheck checkNumber ValueNumber (+) x y
+evalBinop BinopMinus x y = binopCheck checkNumber ValueNumber (-) x y
+evalBinop BinopExp x y = binopCheck checkNumber ValueNumber (**) x y
+evalBinop BinopMult x y = binopCheck checkNumber ValueNumber (*) x y
+evalBinop BinopDiv x y = binopCheck checkNumber ValueNumber (/) x y
+evalBinop BinopMod x y = binopCheck checkNumber ValueNumber (%) x y
+evalBinop BinopLessThan x y = binopCheck checkKey ValueBool (<) x y
+evalBinop BinopGreaterThan x y = binopCheck checkKey ValueBool (>) x y
+evalBinop BinopGreaterThanEq x y = binopCheck checkKey ValueBool (>=) x y
+evalBinop BinopLessThanEq x y = binopCheck checkKey ValueBool (<=) x y
+evalBinop BinopEq x y = binopCheck checkKey ValueBool (==) x y
+evalBinop BinopNotEq x y = binopCheck checkKey ValueBool (/=) x y
+evalBinop BinopAnd x y = binopCheck checkBool ValueBool (&&) x y
+evalBinop BinopOr x y = binopCheck checkBool ValueBool (||) x y
 
--- | determines whether two expresions are equal
-evalEq :: Value -> Value -> Interpreter Bool
-evalEq (ValueNumber n) (ValueNumber m) = pure (n == m)
-evalEq (ValueBool n) (ValueBool m) = pure (n == m)
-evalEq a b = throwError (ErrType (valueType a) (valueType b))
+-- | Given a "check" function, that turns a value into an "a" (and
+-- potentially fails), a binary operation that takes two "a"s to a
+-- "b", and a way to get a Value from a "b", create a type-checked
+-- binary operation on Values.
+binopCheck ::
+  (Value -> Interpreter a) ->
+  (b -> Value) ->
+  (a -> a -> b) ->
+  Value ->
+  Value ->
+  Interpreter Value
+binopCheck check result op x y = do
+  x' <- check x
+  y' <- check y
+  if valueType x /= valueType y
+    then throwError (ErrType (valueType x) (valueType y))
+    else pure ()
+  pure (result (x' `op` y'))
 
 showValue :: Value -> Interpreter String
 showValue (ValueNumber n) = pure (show n)
@@ -302,15 +276,17 @@ checkRef (ValueRef r) = pure r
 checkRef v = throwError (ErrType VTypeBool (valueType v))
 
 -- | Make sure that the value is a key type.
-checkKey :: Value -> Interpreter ()
-checkKey (ValueNumber _) = pure ()
-checkKey (ValueString _) = pure ()
-checkKey ValueNull = pure ()
+checkKey :: Value -> Interpreter Value
+checkKey v@(ValueNumber _) = pure v
+checkKey v@(ValueString _) = pure v
+checkKey ValueNull = pure ValueNull
 checkKey _ = throwError ErrKey
 
 valueType :: Value -> VType
 valueType (ValueNumber _) = VTypeNumber
+valueType (ValueBool _) = VTypeBool
 valueType (ValueString _) = VTypeString
 valueType ValueClosure {} = VTypeClosure
 valueType ValueNull = VTypeNull
+valueType (ValueRef _) = VTypeRef -- TODO
 valueType (ValuePrim _) = VTypePrim
