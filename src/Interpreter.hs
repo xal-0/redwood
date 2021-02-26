@@ -213,7 +213,7 @@ evalBinop BinopMinus x y = binopCheck checkNumber ValueNumber (-) x y
 evalBinop BinopExp x y = binopCheck checkNumber ValueNumber (**) x y
 evalBinop BinopMult x y = binopCheck checkNumber ValueNumber (*) x y
 evalBinop BinopDiv x y = binopCheck checkNumber ValueNumber (/) x y
-evalBinop BinopMod x y = binopCheck checkNumber ValueNumber (%) x y
+evalBinop BinopMod x y = binopCheck checkInt (ValueNumber . fromIntegral) mod x y
 evalBinop BinopLessThan x y = binopCheck checkKey ValueBool (<) x y
 evalBinop BinopGreaterThan x y = binopCheck checkKey ValueBool (>) x y
 evalBinop BinopGreaterThanEq x y = binopCheck checkKey ValueBool (>=) x y

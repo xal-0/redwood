@@ -74,7 +74,7 @@ expr = label "expression" $ makeExprParser term ops
         [ binary "==" BinopEq,
           binary "!=" BinopNotEq],
         [ binary "&&" BinopAnd],
-        [ binary "||" BinopNotOr]
+        [ binary "||" BinopOr]
       ]
 
     manyCall = foldr1 (.) <$> some call

@@ -43,6 +43,7 @@ data Binop
   | BinopDiv
   | BinopMod
   | BinopPow
+  | BinopExp
   deriving (Show)
 
 -- | operations with a single operator
