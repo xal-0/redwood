@@ -10,6 +10,15 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 type Parser = Parsec Void String
 
+parseBlock :: String -> IO (Maybe Block)
+parseBlock path = do
+  contents <- readFile path
+  case parse (stmts <* eof) path contents of
+    Left err -> do
+      putStrLn (errorBundlePretty err)
+      pure Nothing
+    Right prog -> pure (Just prog)
+
 -- | Parser for statements.  This can be a plain expression, if we are
 -- executing the expression for the side effects.
 stmt :: Parser Stmt

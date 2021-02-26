@@ -5,36 +5,51 @@ import Control.Monad.Reader
 import Data.IORef
 import Data.List
 import qualified Data.Map as M
+import Data.Maybe
+import Parser
 import Runtime
 import Syntax
 import Utils
 
-type Interpreter a = ReaderT (IORef Env) (ExceptT Error IO) a
+makeInterpreter :: [(Ident, Prim)] -> IO Interpreter
+makeInterpreter extraBuiltins = do
+  let builtins =
+        fmap
+          (\(i, p) -> (i, ValuePrim p))
+          (extraBuiltins ++ initialPrims)
+      env = Env (M.fromList builtins) Nothing
+  ref <- newIORef env
+  pure (Interpreter ref)
+
+runInterpret :: Interpreter -> Interpret a -> IO (Maybe a)
+runInterpret (Interpreter ref) int = do
+  result <- runExceptT (runReaderT int ref)
+  case result of
+    Left err -> do
+      print err
+      pure Nothing
+    Right a -> pure (Just a)
+
+evalSource :: Interpreter -> FilePath -> IO Bool
+evalSource interpreter path = do
+  block <- parseBlock path
+  case block of
+    Nothing -> pure False
+    Just b -> fmap isJust (runInterpret interpreter (evalBlock b))
+
+evalCall :: Interpreter -> String -> IO (Maybe Value)
+evalCall interpreter var =
+  let prog = StmtExpr (ExprCall (ExprVariable var) [])
+   in runInterpret interpreter (evalStmt prog)
 
 -- | Mappings from variable names to built-in functions.  Programs get
 -- these bindings in their environment when they start.
-initialEnv :: Env
-initialEnv =
-  Env
-    ( M.fromList
-        [ ("print", ValuePrim PrimPrint)
-        ]
-    )
-    Nothing
-
-testBlock :: Block
-testBlock =
-  [ StmtAssign (ExprVariable "x") (ExprArray [ExprNumber 3]),
-    StmtAssign (ExprIndex (ExprVariable "x") (ExprNumber 0)) (ExprNumber 4),
-    StmtExpr (ExprCall (ExprVariable "print") [ExprVariable "x"])
+initialPrims :: [(Ident, Prim)]
+initialPrims =
+  [ ("print", evalPrint)
   ]
 
-testInterpret :: Block -> IO (Either Error Value)
-testInterpret b = do
-  env <- newIORef initialEnv
-  runExceptT (runReaderT (evalBlock b) env)
-
-apply :: IORef Env -> [Ident] -> Block -> [Value] -> Interpreter Value
+apply :: IORef Env -> [Ident] -> Block -> [Value] -> Interpret Value
 apply env params body args
   | length params /= length args =
     throwError
@@ -44,13 +59,13 @@ apply env params body args
     env' <- liftIO (newIORef (Env argBinds (Just env)))
     local (const env') (evalBlock body)
 
-evalBlock :: Block -> Interpreter Value
+evalBlock :: Block -> Interpret Value
 evalBlock [] = pure ValueNull
 evalBlock (s@(StmtReturn _) : _) = evalStmt s
 evalBlock [stmt] = evalStmt stmt
 evalBlock (stmt : stmts) = evalStmt stmt >> evalBlock stmts
 
-evalStmt :: Stmt -> Interpreter Value
+evalStmt :: Stmt -> Interpret Value
 evalStmt s@(StmtWhile condition conditional) = do
   conditionValue <- evalExpr condition
   conditionBool <- checkBool conditionValue
@@ -85,7 +100,7 @@ evalStmt (StmtAssign _ _) = throwError ErrAssign
 evalStmt (StmtReturn Nothing) = pure ValueNull
 evalStmt (StmtReturn (Just r)) = evalExpr r
 
-evalExpr :: Expr -> Interpreter Value
+evalExpr :: Expr -> Interpret Value
 evalExpr (ExprVariable v) = lookupEnv v
 evalExpr (ExprNumber n) = pure (ValueNumber n)
 evalExpr (ExprString n) = pure (ValueString n)
@@ -102,7 +117,7 @@ evalExpr (ExprCall f as) = do
   as' <- traverse evalExpr as
   case f' of
     ValueClosure env params body -> apply env params body as'
-    ValuePrim p -> evalPrim p as'
+    ValuePrim p -> p as'
     _ -> throwError (ErrType VTypeClosure (valueType f'))
 evalExpr (ExprFunc ps body) = do
   env <- ask
@@ -136,14 +151,14 @@ evalExpr (ExprIndex ref index) = do
       _ <- checkKey index'
       maybe (throwError ErrIndex) pure (M.lookup index' d)
 
-evalPrim :: Prim -> [Value] -> Interpreter Value
-evalPrim PrimPrint as = do
+evalPrint :: [Value] -> Interpret Value
+evalPrint as = do
   strs <- traverse showValue as
   liftIO (putStrLn (concat strs))
   pure ValueNull
 
 -- operations between two values
-evalBinop :: Binop -> Value -> Value -> Interpreter Value
+evalBinop :: Binop -> Value -> Value -> Interpret Value
 evalBinop BinopPlus x y = binopCheck checkNumber ValueNumber (+) x y
 evalBinop BinopMinus x y = binopCheck checkNumber ValueNumber (-) x y
 evalBinop BinopExp x y = binopCheck checkNumber ValueNumber (**) x y
@@ -160,7 +175,7 @@ evalBinop BinopAnd x y = binopCheck checkBool ValueBool (&&) x y
 evalBinop BinopOr x y = binopCheck checkBool ValueBool (||) x y
 
 -- operations on one value
-evalMonop :: Monop -> Value -> Interpreter Value
+evalMonop :: Monop -> Value -> Interpret Value
 evalMonop MonopNot x = monopCheck checkBool ValueBool not x
 evalMonop MonopNeg x = monopCheck checkNumber ValueNumber negate x
 
@@ -169,12 +184,12 @@ evalMonop MonopNeg x = monopCheck checkNumber ValueNumber negate x
 -- "b", and a way to get a Value from a "b", create a type-checked
 -- binary operation on Values.
 binopCheck ::
-  (Value -> Interpreter a) ->
+  (Value -> Interpret a) ->
   (b -> Value) ->
   (a -> a -> b) ->
   Value ->
   Value ->
-  Interpreter Value
+  Interpret Value
 binopCheck check result op x y = do
   x' <- check x
   y' <- check y
@@ -184,23 +199,23 @@ binopCheck check result op x y = do
   pure (result (x' `op` y'))
 
 monopCheck ::
-  (Value -> Interpreter a) ->
+  (Value -> Interpret a) ->
   (b -> Value) ->
   (a -> b) ->
   Value ->
-  Interpreter Value
+  Interpret Value
 monopCheck check result op x = do
   x' <- check x
   pure (result (op x'))
 
-lookupEnv :: Ident -> Interpreter Value
+lookupEnv :: Ident -> Interpret Value
 lookupEnv var = do
   result <- findEnv var
   case result of
     Just (_, val) -> pure val
     Nothing -> throwError (ErrLookup var)
 
-modifyEnv :: Ident -> Value -> Interpreter ()
+modifyEnv :: Ident -> Value -> Interpret ()
 modifyEnv var val = do
   result <- findEnv var
   ref <- case result of
@@ -212,7 +227,7 @@ modifyEnv var val = do
 
 -- | Return a reference to the envinorment this variable is defined
 -- in, and Nothing if it is not defined in any of them.
-findEnv :: Ident -> Interpreter (Maybe (IORef Env, Value))
+findEnv :: Ident -> Interpret (Maybe (IORef Env, Value))
 findEnv var = do
   ref <- ask
   Env locals parent <- liftIO (readIORef ref)
@@ -223,7 +238,7 @@ findEnv var = do
         local (const ref') (findEnv var)
       Nothing -> pure Nothing
 
-showValue :: Value -> Interpreter String
+showValue :: Value -> Interpret String
 showValue (ValueNumber n) = pure (show n)
 showValue (ValueString n) = pure n
 showValue (ValueBool b) = pure (if b then "true" else "false")
@@ -246,27 +261,27 @@ showValue (ValueRef r) = do
       strs <- traverse showEntry (M.toList entries)
       pure ("{" ++ intercalate ", " strs ++ "}")
 
-checkNumber :: Value -> Interpreter Double
+checkNumber :: Value -> Interpret Double
 checkNumber (ValueNumber n) = pure n
 checkNumber v = throwError (ErrType VTypeNumber (valueType v))
 
-checkInt :: Value -> Interpreter Int
+checkInt :: Value -> Interpret Int
 checkInt x = do
   num <- checkNumber x
   if num /= fromIntegral (round num :: Int)
     then throwError ErrIndex
     else pure (round num)
 
-checkBool :: Value -> Interpreter Bool
+checkBool :: Value -> Interpret Bool
 checkBool (ValueBool n) = pure n
 checkBool v = throwError (ErrType VTypeBool (valueType v))
 
-checkRef :: Value -> Interpreter (IORef Object)
+checkRef :: Value -> Interpret (IORef Object)
 checkRef (ValueRef r) = pure r
 checkRef v = throwError (ErrType VTypeBool (valueType v))
 
 -- | Make sure that the value is a key type.
-checkKey :: Value -> Interpreter Value
+checkKey :: Value -> Interpret Value
 checkKey v@(ValueNumber _) = pure v
 checkKey v@(ValueString _) = pure v
 checkKey ValueNull = pure ValueNull

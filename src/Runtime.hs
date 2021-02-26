@@ -3,6 +3,12 @@ module Runtime where
 import Data.IORef
 import qualified Data.Map as M
 import Syntax
+import Control.Monad.Reader
+import Control.Monad.Except
+
+newtype Interpreter = Interpreter (IORef Env)
+
+type Interpret a = ReaderT (IORef Env) (ExceptT Error IO) a
 
 data Env = Env (M.Map Ident Value) (Maybe (IORef Env))
 
@@ -25,8 +31,10 @@ data Value
     -- | Assigning to a dictionary/array access expression mutates the
     -- | object pointed to by the reference.
     ValueRef (IORef Object)
-  | -- | A builtin value, like print.
+  | -- | A builtin function, like print.
     ValuePrim Prim
+
+type Prim = [Value] -> Interpret Value
 
 instance Eq Value where
   ValueNumber x == ValueNumber y = x == y
@@ -47,10 +55,6 @@ instance Ord Value where
 data Object
   = ObjectArray [Value]
   | ObjectDict (M.Map Value Value)
-
--- | A built-in value, like the print function.
-data Prim
-  = PrimPrint
 
 data VType
   = VTypeNumber
