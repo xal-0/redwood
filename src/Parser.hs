@@ -61,14 +61,20 @@ expr = label "expression" $ makeExprParser term ops
   where
     ops =
       [ [ Postfix manyCall],
-        [ binary "+" BinopPlus],
-        [ binary "-" BinopPlus],
-        [ binary "<=" BinopLessThanEq],
-        [ binary ">=" BinopGreaterThanEq],
-        [ binary "<" BinopLessThan],
-        [ binary ">" BinopGreaterThan],
-        [ binary "==" BinopEq],
-        [ binary "!=" BinopNotEq]
+        [ binary "**" BinopExp],
+        [ binary "*" BinopMult,
+          binary "/" BinopDiv, 
+          binary "%" BinopMod],
+        [ binary "+" BinopPlus, 
+          binary "-" BinopPlus],
+        [ binary "<=" BinopLessThanEq,
+          binary ">=" BinopGreaterThanEq,
+          binary "<" BinopLessThan,
+          binary ">" BinopGreaterThan],
+        [ binary "==" BinopEq,
+          binary "!=" BinopNotEq],
+        [ binary "&&" BinopAnd],
+        [ binary "||" BinopNotOr]
       ]
 
     manyCall = foldr1 (.) <$> some call

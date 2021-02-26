@@ -245,6 +245,22 @@ evalBinop BinopOr x y = do
   x' <- checkBool x
   y' <- checkBool y
   pure (ValueBool (x' || y'))
+evalBinop BinopMult x y = do
+  x' <- checkNumber x
+  y' <- checkNumber y
+  pure (ValueBool (x' * y'))
+evalBinop BinopDiv x y = do
+  x' <- checkNumber x
+  y' <- checkNumber y
+  pure (ValueBool (x' / y'))
+evalBinop BinopMod x y = do
+  x' <- checkNumber x
+  y' <- checkNumber y
+  pure (ValueBool (x' % y'))
+evalBinop BinopExp x y = do
+  x' <- checkNumber x
+  y' <- checkNumber y
+  pure (ValueBool (x' ** y'))
 
 -- | determines whether two expresions are equal
 evalEq :: Value -> Value -> Interpreter Bool

@@ -39,6 +39,16 @@ data Binop
   | BinopNotEq
   | BinopAnd
   | BinopOr
+  | BinopMult
+  | BinopDiv
+  | BinopMod
+  | BinopPow
+  deriving (Show)
+
+-- | operations with a single operator
+data Monop
+  = MonopNot
+  | MonopNeg
   deriving (Show)
 
 -- | Expressions, which evaluate to a value and can have side effects.
