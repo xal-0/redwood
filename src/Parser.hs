@@ -97,6 +97,7 @@ term =
         boolean,
         exprFunc,
         str,
+        array,
         ifElseChain,
         variable,
         parens expr
@@ -134,6 +135,13 @@ str :: Parser Expr
 str =
   label "string" $
     ExprString <$> (char '"' >> manyTill L.charLiteral (char '"'))
+
+array :: Parser Expr
+array = label "array" $ do
+  symbol "["
+  a <- expr `sepBy` symbol ","
+  symbol "]"
+  pure (ExprArray a)
 
 identifier :: Parser String
 identifier = label "identifier" $
