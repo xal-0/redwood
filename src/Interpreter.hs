@@ -26,7 +26,8 @@ runInterpret (Interpreter ref) int = do
   result <- runExceptT (runReaderT int ref)
   case result of
     Left err -> do
-      putStrLn "error"
+      Right str <- runExceptT (runReaderT (showError err) ref)
+      putStrLn ("error: " ++ str)
       pure Nothing
     Right a -> pure (Just a)
 
@@ -359,3 +360,15 @@ valueType (ValueRef r) = do
 objectType :: Object -> VType
 objectType (ObjectArray _) = VTypeArray
 objectType (ObjectDict _) = VTypeDict
+
+showError :: Error -> Interpret String
+showError (ErrLookup v) = pure ("unknown variable " ++ v)
+showError (ErrMismatch t1 t2) = pure ("mismatched types: " ++ show t1 ++ " and " ++ show t2)
+showError (ErrType t1 t2) = pure ("expected " ++ show t1 ++ ", got " ++ show t2)
+showError (ErrArgs expected got) = pure ("expected " ++ show expected ++ " arguments, got " ++ show got)
+showError ErrAssign = pure "malformed assignment (must be to a variable, index, or field)"
+showError (ErrIndex x i) = do
+  xs <- showValue x
+  is <- showValue i
+  pure ("index " ++ is ++ " does not exist in " ++ xs)
+showError (ErrMisc misc) = pure misc

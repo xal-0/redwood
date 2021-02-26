@@ -65,7 +65,17 @@ data VType
   | VTypePrim
   | VTypeArray
   | VTypeDict
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show VType where
+  show VTypeNumber = "number"
+  show VTypeBool = "bool"
+  show VTypeString = "string"
+  show VTypeClosure = "closure"
+  show VTypeNull = "null"
+  show VTypePrim = "primitive"
+  show VTypeArray = "array"
+  show VTypeDict = "dictionary"
 
 data Error
   = ErrLookup Ident
@@ -73,6 +83,5 @@ data Error
   | ErrType VType VType
   | ErrArgs Int Int
   | ErrAssign
-  | ErrKey Value
   | ErrIndex Value Value
   | ErrMisc String
