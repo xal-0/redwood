@@ -1,0 +1,24 @@
+# Compute fibonacci from the mathematical definition, using recursion.
+func fib_rec(n) {
+  if n < 3 {
+    1
+  } else {
+    fib_rec(n - 1) + fib_rec(n - 2)
+  }
+}
+
+# Do the same, but use the efficient loop instead.
+func fib_iter(n) {
+  x = 0
+  y = 1
+  while n > 0 {
+    n = n - 1
+    tmp = x
+    x = y
+    y = tmp + y
+  }
+  x
+}
+
+println("(recursively) fib(10) = ", fib_rec(10))
+println("(iteratively) fib(10) = ", fib_iter(10))
