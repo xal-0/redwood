@@ -162,6 +162,7 @@ evalExpr (ExprVariable v) = do
   Env m <- get
   maybe (throwError (ErrLookup v)) pure (M.lookup v m)
 evalExpr (ExprNumber n) = pure (ValueNumber n)
+evalExpr (ExprString n) = pure (ValueString n)
 evalExpr (ExprBool n) = pure (ValueBool n)
 evalExpr (ExprBinop op x y) = do
   x' <- evalExpr x
@@ -239,6 +240,7 @@ binopCheck check result op x y = do
 
 showValue :: Value -> Interpreter String
 showValue (ValueNumber n) = pure (show n)
+showValue (ValueString n) = pure (show n)
 showValue (ValueBool b) = pure (if b then "true" else "false")
 showValue (ValueClosure _ _ _) = pure "<closure>"
 showValue ValueNull = pure "null"

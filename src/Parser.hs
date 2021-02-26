@@ -55,16 +55,20 @@ stmtBlock = braces stmts
 stmts :: Parser Block
 stmts = stmt `sepEndBy` some (lexeme newline)
 
+-- finds any operations between 2 operators
 expr :: Parser Expr
 expr = label "expression" $ makeExprParser term ops
   where
     ops =
-      [ [ Postfix manyCall
-        ],
-        [ binary "+" BinopPlus
-        ],
-        [ binary "==" BinopEq
-        ]
+      [ [ Postfix manyCall],
+        [ binary "+" BinopPlus],
+        [ binary "-" BinopPlus],
+        [ binary "<=" BinopLessThanEq],
+        [ binary ">=" BinopGreaterThanEq],
+        [ binary "<" BinopLessThan],
+        [ binary ">" BinopGreaterThan],
+        [ binary "==" BinopEq],
+        [ binary "!=" BinopNotEq]
       ]
 
     manyCall = foldr1 (.) <$> some call
@@ -80,16 +84,17 @@ term =
     choice
       [ number,
         exprFunc,
+        str,
         variable,
         parens expr
       ]
 
 -- exprIfElseChain :: Parser Expr
 -- exprIfElseChain =
---   symbol "if" *> (ExprIfElseChain <$> many exprElseIf <*> optional exprElse)
+--   symbol "if" *> (ExprIfElseChain <$> exprElse)
 
 -- exprElseIf :: Parser Expr
--- exprElseIf = symbol "else if" *> (ExprFunc <$> parens expr) <*> stmtBlock
+-- exprElseIf = symbol "else if" *> (parens expr <*> stmtBlock)
 
 -- exprElse :: Parser Expr
 -- exprElse = symbol "else" *> stmtBlock
@@ -112,6 +117,11 @@ number =
 boolean :: Parser Expr
 boolean = 
   label "boolean" $ ExprBool <$> (True <$ symbol "true" <|> False <$ symbol "false")
+
+str :: Parser Expr
+str =
+  label "string" $
+    ExprString <$> (char '"' >> manyTill L.charLiteral (char '"'))
 
 identifier :: Parser String
 identifier = label "identifier" $

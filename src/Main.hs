@@ -13,6 +13,8 @@ main = do
   case args of
     [filename] -> do
       fileContents <- readFile filename
+      print fileContents
+      pure ()
       case parse (stmts <* eof) filename fileContents of
         Left err -> putStrLn (errorBundlePretty err)
         Right prog -> do
