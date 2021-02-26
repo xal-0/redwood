@@ -61,12 +61,14 @@ expr = label "expression" $ makeExprParser term ops
   where
     ops =
       [ [ Postfix manyCall],
+        [ prefix "-" MonopNeg,
+          prefix "!" MonopNot],
         [ binary "**" BinopExp],
         [ binary "*" BinopMult,
           binary "/" BinopDiv, 
           binary "%" BinopMod],
         [ binary "+" BinopPlus, 
-          binary "-" BinopPlus],
+          binary "-" BinopMinus],
         [ binary "<=" BinopLessThanEq,
           binary ">=" BinopGreaterThanEq,
           binary "<" BinopLessThan,
@@ -80,6 +82,7 @@ expr = label "expression" $ makeExprParser term ops
     manyCall = foldr1 (.) <$> some call
 
     binary name op = InfixL (label "operator" $ ExprBinop op <$ symbol name)
+    prefix name op = Prefix (label "operator" $ ExprMonop op <$ symbol name)
     call = do
       args <- parens (expr `sepBy` symbol ",")
       pure (`ExprCall` args)

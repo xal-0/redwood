@@ -168,6 +168,9 @@ evalExpr (ExprBinop op x y) = do
   x' <- evalExpr x
   y' <- evalExpr y
   evalBinop op x' y'
+evalExpr (ExprMonop op x) = do
+  x' <- evalExpr x
+  evalMonop op x'
 evalExpr (ExprCall f as) = do
   f' <- evalExpr f
   as' <- traverse evalExpr as
@@ -207,6 +210,7 @@ evalPrim PrimPrint as = do
   liftIO (putStrLn (concat strs))
   pure ValueNull
 
+-- operations between two values
 evalBinop :: Binop -> Value -> Value -> Interpreter Value
 evalBinop BinopPlus x y = binopCheck checkNumber ValueNumber (+) x y
 evalBinop BinopMinus x y = binopCheck checkNumber ValueNumber (-) x y
@@ -222,6 +226,11 @@ evalBinop BinopEq x y = binopCheck checkKey ValueBool (==) x y
 evalBinop BinopNotEq x y = binopCheck checkKey ValueBool (/=) x y
 evalBinop BinopAnd x y = binopCheck checkBool ValueBool (&&) x y
 evalBinop BinopOr x y = binopCheck checkBool ValueBool (||) x y
+
+-- operations on one value
+evalMonop :: Monop -> Value -> Interpreter Value
+evalMonop MonopNot x = monopCheck checkBool ValueBool not x
+evalMonop MonopNeg x = monopCheck checkNumber ValueNumber negate x
 
 -- | Given a "check" function, that turns a value into an "a" (and
 -- potentially fails), a binary operation that takes two "a"s to a
@@ -241,6 +250,16 @@ binopCheck check result op x y = do
     then throwError (ErrType (valueType x) (valueType y))
     else pure ()
   pure (result (x' `op` y'))
+
+monopCheck ::
+  (Value -> Interpreter a) ->
+  (b -> Value) ->
+  (a -> b) ->
+  Value ->
+  Interpreter Value
+monopCheck check result op x = do
+  x' <- check x
+  pure (result (op x'))
 
 showValue :: Value -> Interpreter String
 showValue (ValueNumber n) = pure (show n)

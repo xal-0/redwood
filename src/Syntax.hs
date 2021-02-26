@@ -66,6 +66,8 @@ data Expr
     ExprIfElseChain [(Expr, Block)] (Maybe Block)
   | -- | A binary operation (arithmetic).
     ExprBinop Binop Expr Expr
+  | -- | A binary operation (arithmetic).
+    ExprMonop Monop Expr
   | -- | Call a function (really just an expression that evaluates to
     -- a closure) with some arguments.
     ExprCall Expr [Expr]

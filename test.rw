@@ -1,4 +1,3 @@
-x = 2
-while x == x {
-  print ("hello")
-}
+y = true
+print (y)
+print (!y)
