@@ -127,8 +127,8 @@ evalStmt (StmtExpr e) = evalExpr e
 -- expression into the environment, and only then evaluate the
 -- expression.  Laziness wins again!
 evalStmt (StmtFunc v ps body) = mdo
-  func <- evalExpr (ExprFunc ps body)
   modify (\(Env m) -> Env (M.insert v func m))
+  func <- evalExpr (ExprFunc ps body)
   pure ValueNull
 evalStmt (StmtAssign (ExprVariable v) e) = do
   e' <- evalExpr e
@@ -263,7 +263,7 @@ monopCheck check result op x = do
 
 showValue :: Value -> Interpreter String
 showValue (ValueNumber n) = pure (show n)
-showValue (ValueString n) = pure (show n)
+showValue (ValueString n) = pure n
 showValue (ValueBool b) = pure (if b then "true" else "false")
 showValue (ValueClosure _ _ _) = pure "<closure>"
 showValue ValueNull = pure "null"

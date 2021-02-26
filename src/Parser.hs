@@ -27,13 +27,13 @@ stmtAssignment :: Parser Stmt
 stmtAssignment =
   StmtAssign <$> expr
     <*> (symbol "=" *> expr)
- 
+
 stmtReturn :: Parser Stmt
 stmtReturn = symbol "return" *> (StmtReturn <$> optional expr)
 
 stmtWhile :: Parser Stmt
-stmtWhile = 
-  symbol "while" 
+stmtWhile =
+  symbol "while"
     *> (StmtWhile <$> expr <*> stmtBlock)
 
 stmtFuncDef :: Parser Stmt
@@ -60,6 +60,7 @@ expr :: Parser Expr
 expr = label "expression" $ makeExprParser term ops
   where
     ops =
+<<<<<<< HEAD
       [ [ Postfix manyCall],
         [ prefix "-" MonopNeg,
           prefix "!" MonopNot],
@@ -72,11 +73,13 @@ expr = label "expression" $ makeExprParser term ops
         [ binary "<=" BinopLessThanEq,
           binary ">=" BinopGreaterThanEq,
           binary "<" BinopLessThan,
-          binary ">" BinopGreaterThan],
+          binary ">" BinopGreaterThan
+        ],
         [ binary "==" BinopEq,
-          binary "!=" BinopNotEq],
-        [ binary "&&" BinopAnd],
-        [ binary "||" BinopOr]
+          binary "!=" BinopNotEq
+        ],
+        [binary "&&" BinopAnd],
+        [binary "||" BinopOr]
       ]
 
     manyCall = foldr1 (.) <$> some call
@@ -92,21 +95,22 @@ term =
   lexeme $
     choice
       [ number,
+        boolean,
         exprFunc,
         str,
+        ifElseChain,
         variable,
         parens expr
       ]
 
--- exprIfElseChain :: Parser Expr
--- exprIfElseChain =
---   symbol "if" *> (ExprIfElseChain <$> exprElse)
-
--- exprElseIf :: Parser Expr
--- exprElseIf = symbol "else if" *> (parens expr <*> stmtBlock)
-
--- exprElse :: Parser Expr
--- exprElse = symbol "else" *> stmtBlock
+ifElseChain :: Parser Expr
+ifElseChain = do
+  ifClause <- symbol "if" *> clause
+  elseIfClauses <- many (try (symbol "else" *> symbol "if") *> clause)
+  elseClause <- optional (symbol "else" *> stmtBlock)
+  pure (ExprIfElseChain (ifClause : elseIfClauses) elseClause)
+  where
+    clause = (,) <$> expr <*> stmtBlock
 
 exprFunc :: Parser Expr
 exprFunc =
@@ -124,7 +128,7 @@ number =
     float = L.float
 
 boolean :: Parser Expr
-boolean = 
+boolean =
   label "boolean" $ ExprBool <$> (True <$ symbol "true" <|> False <$ symbol "false")
 
 str :: Parser Expr
