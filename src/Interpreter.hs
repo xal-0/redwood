@@ -50,7 +50,8 @@ initialPrims :: [(Ident, Prim)]
 initialPrims =
   [ ("println", evalPrint True),
     ("print", evalPrint False),
-    ("push", evalPush)
+    ("push", evalPush),
+    ("delete", evalDelete)
   ]
 
 apply :: IORef Env -> [Ident] -> Block -> [Value] -> Interpret Value
@@ -206,6 +207,23 @@ evalPush [ValueRef r, x] = do
     _ -> throwError (ErrMismatch VTypeArray (objectType o))
   pure ValueNull
 evalPush _ = throwError (ErrMisc "wrong arguments for push")
+
+evalDelete :: Prim
+evalDelete [ValueRef r, x] = do
+  o <- liftIO (readIORef r)
+  case o of
+    ObjectArray a -> do
+      i <- checkInt x
+      if i >= length a
+        then throwError (ErrIndex (ValueRef r) x)
+        else liftIO (writeIORef r (ObjectArray (take i a ++ drop (i + 1) a)))
+    ObjectDict d -> do
+      _ <- checkKey x
+      if M.member x d
+        then liftIO (writeIORef r (ObjectDict (M.delete x d)))
+        else throwError (ErrIndex (ValueRef r) x)
+  pure ValueNull
+evalDelete _ = throwError (ErrMisc "wrong arguments for delete")
 
 -- operations between two values
 evalBinop :: Binop -> Value -> Value -> Interpret Value
