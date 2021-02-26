@@ -28,6 +28,7 @@ stmt =
       [ stmtReturn,
         try stmtFuncDef,
         try stmtWhile,
+        try stmtFor,
         try stmtAssignment,
         StmtExpr <$> expr
       ]
@@ -44,6 +45,14 @@ stmtWhile :: Parser Stmt
 stmtWhile =
   symbol "while"
     *> (StmtWhile <$> expr <*> stmtBlock)
+
+stmtFor :: Parser Stmt
+stmtFor = do
+  index <- symbol "for" *> identifier
+  value <- optional (symbol "," *> identifier)
+  collection <- symbol "in" *> expr
+  body <- stmtBlock
+  pure (StmtFor index value collection body)
 
 stmtFuncDef :: Parser Stmt
 stmtFuncDef =

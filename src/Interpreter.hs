@@ -2,6 +2,7 @@ module Interpreter where
 
 import Control.Monad.Except
 import Control.Monad.Reader
+import Data.Foldable
 import Data.IORef
 import Data.List
 import qualified Data.Map as M
@@ -62,6 +63,13 @@ apply env params body args
     env' <- liftIO (newIORef (Env argBinds (Just env)))
     local (const env') (evalBlock body)
 
+evalScope :: [(Ident, Value)] -> Block -> Interpret Value
+evalScope binds block = do
+  parent <- ask
+  let env = Env (M.fromList binds) (Just parent)
+  env' <- liftIO (newIORef env)
+  local (const env') (evalBlock block)
+
 evalBlock :: Block -> Interpret Value
 evalBlock [] = pure ValueNull
 evalBlock (s@(StmtReturn _) : _) = evalStmt s
@@ -73,8 +81,12 @@ evalStmt s@(StmtWhile condition conditional) = do
   conditionValue <- evalExpr condition
   conditionBool <- checkBool conditionValue
   if conditionBool
-    then evalBlock conditional >> evalStmt s
+    then evalScope [] conditional >> evalStmt s
     else pure ValueNull
+evalStmt (StmtFor k v e b) = do
+  e' <- evalExpr e
+  evalFor k v e' b
+  pure ValueNull
 evalStmt (StmtExpr e) = evalExpr e
 evalStmt (StmtFunc v ps body) =
   evalStmt (StmtAssign (ExprVariable v) (ExprFunc ps body))
@@ -103,6 +115,21 @@ evalStmt (StmtAssign (ExprIndex indexable index) e) = do
 evalStmt (StmtAssign _ _) = throwError ErrAssign
 evalStmt (StmtReturn Nothing) = pure ValueNull
 evalStmt (StmtReturn (Just r)) = evalExpr r
+
+evalFor :: Ident -> Maybe Ident -> Value -> Block -> Interpret ()
+evalFor value Nothing (ValueRef r) body = do
+  obj <- liftIO (readIORef r)
+  case obj of
+    ObjectArray a -> traverse_ (\v -> evalScope [(value, v)] body) a
+    _ -> throwError (ErrType VTypeArray (objectType obj))
+evalFor _ Nothing v _ = ErrType VTypeArray <$> valueType v >>= throwError
+evalFor key (Just value) (ValueRef r) body = do
+  obj <- liftIO (readIORef r)
+  pairs <- case obj of
+    ObjectArray a -> pure (zip (fmap ValueNumber [0..]) a)
+    ObjectDict d -> pure (M.toList d)
+  traverse_ (\(k, v) -> evalScope [(value, v), (key, k)] body) pairs
+evalFor _ (Just _) v _ = ErrType VTypeDict <$> valueType v >>= throwError
 
 evalExpr :: Expr -> Interpret Value
 evalExpr (ExprVariable v) = lookupEnv v
@@ -137,12 +164,12 @@ evalExpr (ExprDict entries) = do
   where
     evalEntry (k, v) = (,) <$> evalExpr k <*> evalExpr v
 evalExpr (ExprIfElseChain [] Nothing) = pure ValueNull
-evalExpr (ExprIfElseChain [] (Just els)) = evalBlock els
+evalExpr (ExprIfElseChain [] (Just els)) = evalScope [] els
 evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
   conditionValue <- evalExpr cond
   conditionBool <- checkBool conditionValue
   if conditionBool
-    then evalBlock body
+    then evalScope [] body
     else evalExpr (ExprIfElseChain xs els)
 evalExpr (ExprIndex x index) = do
   x' <- evalExpr x
