@@ -144,7 +144,7 @@ number =
   label "number" $
     ExprNumber <$> L.signed sc (try float <|> integer)
   where
-    integer = fromIntegral <$> L.decimal
+    integer = fromIntegral <$> (L.decimal :: Parser Int)
     float = L.float
 
 boolean :: Parser Expr
@@ -158,21 +158,22 @@ str =
 
 array :: Parser Expr
 array = label "array" $ do
-  symbol "[" *> many newline
+  symbol "[" <* many newline
   a <- expr `sepBy` commaNewline
-  many newline
+  void (many newline)
   symbol "]"
   pure (ExprArray a)
 
 dictionary :: Parser Expr
 dictionary = label "dictionary" $ do
-  symbol "{" *> many newline
+  symbol "{" <* many newline
   entries <- entry `sepBy` commaNewline
-  many newline
+  void (many newline)
   symbol "}"
   pure (ExprDict entries)
   where
-    entry = (,) <$> (identifier <* symbol ":") <*> expr
+    entry = (,) <$> (key <* symbol ":") <*> expr
+    key = ExprString <$> identifier <|> expr
 
 commaNewline :: Parser ()
 commaNewline = void (symbol "," *> many newline)
@@ -203,8 +204,8 @@ identifier = label "identifier" $
 sc :: Parser ()
 sc = L.space hspace1 empty empty
 
-symbol :: String -> Parser String
-symbol = L.symbol sc
+symbol :: String -> Parser ()
+symbol s = void (L.symbol sc s)
 
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc

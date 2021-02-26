@@ -149,7 +149,7 @@ evalStmt (StmtAssign (ExprIndex ref index) e) = do
         Just a' -> do
           liftIO (writeIORef ref' (ObjectArray a'))
     ObjectDict d -> do
-      checkKey index'
+      _ <- checkKey index'
       let d' = M.insert index' e' d
       liftIO (writeIORef ref' (ObjectDict d'))
   pure ValueNull
@@ -201,7 +201,7 @@ evalExpr (ExprIndex ref index) = do
       i <- checkInt index'
       maybe (throwError ErrIndex) pure (a !!? i)
     ObjectDict d -> do
-      checkKey index'
+      _ <- checkKey index'
       maybe (throwError ErrIndex) pure (M.lookup index' d)
 
 evalPrim :: Prim -> [Value] -> Interpreter Value
@@ -267,13 +267,22 @@ showValue (ValueString n) = pure n
 showValue (ValueBool b) = pure (if b then "true" else "false")
 showValue (ValueClosure _ _ _) = pure "<closure>"
 showValue ValueNull = pure "null"
-showValue (ValuePrim p) = pure "<primitive>"
+showValue (ValuePrim _) = pure "<primitive>"
 showValue (ValueRef r) = do
   obj <- liftIO (readIORef r)
   case obj of
     ObjectArray values -> do
       strs <- traverse showValue values
       pure ("[" ++ intercalate ", " strs ++ "]")
+    ObjectDict entries -> do
+      let showEntry (k, v) = do
+            k' <- case k of
+              ValueString s -> pure s
+              _ -> showValue k
+            v' <- showValue v
+            pure (k' ++ ": " ++ v')
+      strs <- traverse showEntry (M.toList entries)
+      pure ("{" ++ intercalate ", " strs ++ "}")
 
 checkNumber :: Value -> Interpreter Double
 checkNumber (ValueNumber n) = pure n
