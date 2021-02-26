@@ -4,7 +4,7 @@ import Data.IORef
 import qualified Data.Map as M
 import Syntax
 
-newtype Env = Env (M.Map Ident Value)
+data Env = Env (M.Map Ident Value) (Maybe (IORef Env))
 
 -- | An immutable value at runtime.  Variables bind to these directly:
 -- assigning to a variable changes which value it points to.  (If you
@@ -16,7 +16,7 @@ data Value
   | -- | A closure.  When you evaluate a functione expression, it
     -- | closes over its local envinrionment and returns it in one of
     -- | these (lexical scope).
-    ValueClosure Env [Ident] Block
+    ValueClosure (IORef Env) [Ident] Block
   | ValueNull
   | -- | A reference to an object on the heap.  This is for variables
     -- | that refer to things that can be mutated, like arrays or

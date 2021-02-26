@@ -1,9 +1,7 @@
-{-# LANGUAGE RecursiveDo #-}
-
 module Interpreter where
 
 import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad.Reader
 import Data.IORef
 import Data.List
 import qualified Data.Map as M
@@ -11,16 +9,18 @@ import Runtime
 import Syntax
 import Utils
 
-type Interpreter a = StateT Env (ExceptT Error IO) a
+type Interpreter a = ReaderT (IORef Env) (ExceptT Error IO) a
 
 -- | Mappings from variable names to built-in functions.  Programs get
 -- these bindings in their environment when they start.
 initialEnv :: Env
 initialEnv =
-  Env $
-    M.fromList
-      [ ("print", ValuePrim PrimPrint)
-      ]
+  Env
+    ( M.fromList
+        [ ("print", ValuePrim PrimPrint)
+        ]
+    )
+    Nothing
 
 testBlock :: Block
 testBlock =
@@ -30,17 +30,19 @@ testBlock =
   ]
 
 testInterpret :: Block -> IO (Either Error Value)
-testInterpret b = runExceptT (evalStateT (evalBlock b) initialEnv)
+testInterpret b = do
+  env <- newIORef initialEnv
+  runExceptT (runReaderT (evalBlock b) env)
 
-apply :: Env -> [Ident] -> Block -> [Value] -> Interpreter Value
-apply (Env env) params body args
+apply :: IORef Env -> [Ident] -> Block -> [Value] -> Interpreter Value
+apply env params body args
   | length params /= length args =
     throwError
       (ErrArgs (length params) (length args))
   | otherwise = do
     let argBinds = M.fromList (zip params args)
-        env' = Env (argBinds `M.union` env)
-    lift (evalStateT (evalBlock body) env')
+    env' <- liftIO (newIORef (Env argBinds (Just env)))
+    local (const env') (evalBlock body)
 
 evalBlock :: Block -> Interpreter Value
 evalBlock [] = pure ValueNull
@@ -56,20 +58,12 @@ evalStmt s@(StmtWhile condition conditional) = do
     then evalBlock conditional >> evalStmt s
     else pure ValueNull
 evalStmt (StmtExpr e) = evalExpr e
--- Need a recursive do when doing a function definition, since
--- functions can refer to themselves.  We first insert the evaluated
--- expression into the environment, and only then evaluate the
--- expression.  Laziness wins again!
-evalStmt (StmtFunc v ps body) = mdo
-  modify (\(Env m) -> Env (M.insert v func m))
-  func <- evalExpr (ExprFunc ps body)
-  pure ValueNull
+evalStmt (StmtFunc v ps body) =
+  evalStmt (StmtAssign (ExprVariable v) (ExprFunc ps body))
 evalStmt (StmtAssign (ExprVariable v) e) = do
   e' <- evalExpr e
-  modify (\(Env m) -> Env (M.insert v e' m))
+  modifyEnv v e'
   pure ValueNull
--- Assigning to a dictionary/array can't be recursive, because they're
--- on the heap.
 evalStmt (StmtAssign (ExprIndex ref index) e) = do
   ref' <- evalExpr ref >>= checkRef
   index' <- evalExpr index
@@ -92,9 +86,7 @@ evalStmt (StmtReturn Nothing) = pure ValueNull
 evalStmt (StmtReturn (Just r)) = evalExpr r
 
 evalExpr :: Expr -> Interpreter Value
-evalExpr (ExprVariable v) = do
-  Env m <- get
-  maybe (throwError (ErrLookup v)) pure (M.lookup v m)
+evalExpr (ExprVariable v) = lookupEnv v
 evalExpr (ExprNumber n) = pure (ValueNumber n)
 evalExpr (ExprString n) = pure (ValueString n)
 evalExpr (ExprBool n) = pure (ValueBool n)
@@ -113,7 +105,7 @@ evalExpr (ExprCall f as) = do
     ValuePrim p -> evalPrim p as'
     _ -> throwError (ErrType VTypeClosure (valueType f'))
 evalExpr (ExprFunc ps body) = do
-  env <- get
+  env <- ask
   pure (ValueClosure env ps body)
 evalExpr (ExprArray exprs) = do
   exprs' <- traverse evalExpr exprs
@@ -200,6 +192,36 @@ monopCheck ::
 monopCheck check result op x = do
   x' <- check x
   pure (result (op x'))
+
+lookupEnv :: Ident -> Interpreter Value
+lookupEnv var = do
+  result <- findEnv var
+  case result of
+    Just (_, val) -> pure val
+    Nothing -> throwError (ErrLookup var)
+
+modifyEnv :: Ident -> Value -> Interpreter ()
+modifyEnv var val = do
+  result <- findEnv var
+  ref <- case result of
+    Just (ref, _) -> pure ref
+    Nothing -> ask
+  Env locals parent <- liftIO (readIORef ref)
+  let env' = Env (M.insert var val locals) parent
+  liftIO (writeIORef ref env')
+
+-- | Return a reference to the envinorment this variable is defined
+-- in, and Nothing if it is not defined in any of them.
+findEnv :: Ident -> Interpreter (Maybe (IORef Env, Value))
+findEnv var = do
+  ref <- ask
+  Env locals parent <- liftIO (readIORef ref)
+  case M.lookup var locals of
+    Just val -> pure (Just (ref, val))
+    Nothing -> case parent of
+      Just ref' -> do
+        local (const ref') (findEnv var)
+      Nothing -> pure Nothing
 
 showValue :: Value -> Interpreter String
 showValue (ValueNumber n) = pure (show n)
