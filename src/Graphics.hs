@@ -1,5 +1,5 @@
 
-module Main where
+module Graphics where
 
 import Graphics.Gloss.Interface.IO.Game
 import qualified Data.Map as M
