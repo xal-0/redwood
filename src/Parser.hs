@@ -27,13 +27,13 @@ stmtAssignment :: Parser Stmt
 stmtAssignment =
   StmtAssign <$> expr
     <*> (symbol "=" *> expr)
- 
+
 stmtReturn :: Parser Stmt
 stmtReturn = symbol "return" *> (StmtReturn <$> optional expr)
 
 stmtWhile :: Parser Stmt
-stmtWhile = 
-  symbol "while" 
+stmtWhile =
+  symbol "while"
     *> (StmtWhile <$> expr <*> stmtBlock)
 
 stmtFuncDef :: Parser Stmt
@@ -60,21 +60,25 @@ expr :: Parser Expr
 expr = label "expression" $ makeExprParser term ops
   where
     ops =
-      [ [ Postfix manyCall],
-        [ binary "**" BinopExp],
+      [ [Postfix manyCall],
+        [binary "**" BinopExp],
         [ binary "*" BinopMult,
-          binary "/" BinopDiv, 
-          binary "%" BinopMod],
-        [ binary "+" BinopPlus, 
-          binary "-" BinopPlus],
+          binary "/" BinopDiv,
+          binary "%" BinopMod
+        ],
+        [ binary "+" BinopPlus,
+          binary "-" BinopPlus
+        ],
         [ binary "<=" BinopLessThanEq,
           binary ">=" BinopGreaterThanEq,
           binary "<" BinopLessThan,
-          binary ">" BinopGreaterThan],
+          binary ">" BinopGreaterThan
+        ],
         [ binary "==" BinopEq,
-          binary "!=" BinopNotEq],
-        [ binary "&&" BinopAnd],
-        [ binary "||" BinopOr]
+          binary "!=" BinopNotEq
+        ],
+        [binary "&&" BinopAnd],
+        [binary "||" BinopOr]
       ]
 
     manyCall = foldr1 (.) <$> some call
@@ -121,7 +125,7 @@ number =
     float = L.float
 
 boolean :: Parser Expr
-boolean = 
+boolean =
   label "boolean" $ ExprBool <$> (True <$ symbol "true" <|> False <$ symbol "false")
 
 str :: Parser Expr
