@@ -67,7 +67,7 @@ expr = label "expression" $ makeExprParser term ops
           binary "%" BinopMod
         ],
         [ binary "+" BinopPlus,
-          binary "-" BinopPlus
+          binary "-" BinopMinus
         ],
         [ binary "<=" BinopLessThanEq,
           binary ">=" BinopGreaterThanEq,
@@ -93,21 +93,22 @@ term =
   lexeme $
     choice
       [ number,
+        boolean,
         exprFunc,
         str,
+        ifElseChain,
         variable,
         parens expr
       ]
 
--- exprIfElseChain :: Parser Expr
--- exprIfElseChain =
---   symbol "if" *> (ExprIfElseChain <$> exprElse)
-
--- exprElseIf :: Parser Expr
--- exprElseIf = symbol "else if" *> (parens expr <*> stmtBlock)
-
--- exprElse :: Parser Expr
--- exprElse = symbol "else" *> stmtBlock
+ifElseChain :: Parser Expr
+ifElseChain = do
+  ifClause <- symbol "if" *> clause
+  elseIfClauses <- many (try (symbol "else" *> symbol "if") *> clause)
+  elseClause <- optional (symbol "else" *> stmtBlock)
+  pure (ExprIfElseChain (ifClause : elseIfClauses) elseClause)
+  where
+    clause = (,) <$> expr <*> stmtBlock
 
 exprFunc :: Parser Expr
 exprFunc =

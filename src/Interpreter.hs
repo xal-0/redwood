@@ -127,8 +127,8 @@ evalStmt (StmtExpr e) = evalExpr e
 -- expression into the environment, and only then evaluate the
 -- expression.  Laziness wins again!
 evalStmt (StmtFunc v ps body) = mdo
-  func <- evalExpr (ExprFunc ps body)
   modify (\(Env m) -> Env (M.insert v func m))
+  func <- evalExpr (ExprFunc ps body)
   pure ValueNull
 evalStmt (StmtAssign (ExprVariable v) e) = do
   e' <- evalExpr e
