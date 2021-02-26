@@ -60,7 +60,7 @@ expr :: Parser Expr
 expr = label "expression" $ makeExprParser term ops
   where
     ops =
-      [ [Postfix manyCall],
+      [ [manyCall (call <|> index <|> field)],
         [ prefix "-" MonopNeg,
           prefix "!" MonopNot
         ],
@@ -84,13 +84,29 @@ expr = label "expression" $ makeExprParser term ops
         [binary "||" BinopOr]
       ]
 
-    manyCall = foldr1 (.) <$> some call
+    -- From the megaparsec manual.  Parse many "call-like" things
+    -- after an expression (call parenthesis, array indexing, field
+    -- access), and then apply them all in reverse, so that the
+    -- innermost one is on the left.
+    manyCall p = Postfix (foldr1 (.) . reverse <$> some p)
 
     binary name op = InfixL (label "operator" $ ExprBinop op <$ symbol name)
     prefix name op = Prefix (label "operator" $ ExprMonop op <$ symbol name)
+
     call = do
       args <- parens (expr `sepBy` symbol ",")
       pure (`ExprCall` args)
+
+    index = do
+      symbol "["
+      i <- expr
+      symbol "]"
+      pure (`ExprIndex` i)
+
+    field = do
+      symbol "."
+      fieldName <- identifier
+      pure (`ExprIndex` ExprString fieldName)
 
 term :: Parser Expr
 term =
@@ -101,6 +117,7 @@ term =
         exprFunc,
         str,
         array,
+        dictionary,
         ifElseChain,
         variable,
         parens expr
@@ -127,7 +144,7 @@ number =
   label "number" $
     ExprNumber <$> L.signed sc (try float <|> integer)
   where
-    integer = fromIntegral <$> L.decimal
+    integer = fromIntegral <$> (L.decimal :: Parser Int)
     float = L.float
 
 boolean :: Parser Expr
@@ -141,10 +158,25 @@ str =
 
 array :: Parser Expr
 array = label "array" $ do
-  symbol "["
-  a <- expr `sepBy` symbol ","
+  symbol "[" <* many newline
+  a <- expr `sepBy` commaNewline
+  void (many newline)
   symbol "]"
   pure (ExprArray a)
+
+dictionary :: Parser Expr
+dictionary = label "dictionary" $ do
+  symbol "{" <* many newline
+  entries <- entry `sepBy` commaNewline
+  void (many newline)
+  symbol "}"
+  pure (ExprDict entries)
+  where
+    entry = (,) <$> (key <* symbol ":") <*> expr
+    key = ExprString <$> identifier <|> expr
+
+commaNewline :: Parser ()
+commaNewline = void (symbol "," *> many newline)
 
 identifier :: Parser String
 identifier = label "identifier" $
@@ -172,8 +204,8 @@ identifier = label "identifier" $
 sc :: Parser ()
 sc = L.space hspace1 empty empty
 
-symbol :: String -> Parser String
-symbol = L.symbol sc
+symbol :: String -> Parser ()
+symbol s = void (L.symbol sc s)
 
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc

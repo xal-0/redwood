@@ -42,7 +42,6 @@ data Binop
   | BinopMult
   | BinopDiv
   | BinopMod
-  | BinopPow
   | BinopExp
   deriving (Show)
 
@@ -77,7 +76,7 @@ data Expr
   | -- | A literal array.
     ExprArray [Expr]
   | -- | A literal dictionary.
-    ExprDict [(Ident, Expr)]
+    ExprDict [(Expr, Expr)]
   | -- | An "x[y]" expression.  This either indexes into an array with
     -- | a number, or into a dictionary with a string.
     ExprIndex Expr Expr
