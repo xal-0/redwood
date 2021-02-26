@@ -18,6 +18,7 @@ stmt =
     choice
       [ stmtReturn,
         try stmtFuncDef,
+        try stmtWhile,
         try stmtAssignment,
         StmtExpr <$> expr
       ]
@@ -29,6 +30,11 @@ stmtAssignment =
  
 stmtReturn :: Parser Stmt
 stmtReturn = symbol "return" *> (StmtReturn <$> optional expr)
+
+stmtWhile :: Parser Stmt
+stmtWhile = 
+  symbol "while" 
+    *> (StmtWhile <$> expr <*> stmtBlock)
 
 stmtFuncDef :: Parser Stmt
 stmtFuncDef =
@@ -56,6 +62,8 @@ expr = label "expression" $ makeExprParser term ops
       [ [ Postfix manyCall
         ],
         [ binary "+" BinopPlus
+        ],
+        [ binary "==" BinopEq
         ]
       ]
 
@@ -76,6 +84,16 @@ term =
         parens expr
       ]
 
+exprIfElseChain :: Parser Expr
+exprIfElseChain =
+  symbol "if" *> (ExprIfElseChain <$> many exprElseIf <*> optional exprElse)
+
+exprElseIf :: Parser Expr
+exprElseIf = symbol "else if" *> (ExprFunc <$> parens expr) <*> stmtBlock
+
+exprElse :: Parser Expr
+exprElse = symbol "else" *> stmtBlock
+
 exprFunc :: Parser Expr
 exprFunc =
   symbol "func" *> (ExprFunc <$> funcArgs <*> stmtBlock)
@@ -90,6 +108,11 @@ number =
   where
     integer = fromIntegral <$> L.decimal
     float = L.float
+
+-- boolean :: Parser Expr
+-- boolean = 
+--   label "boolean" $
+--     ExprBool <$> ("true" ==)
 
 identifier :: Parser String
 identifier = label "identifier" $

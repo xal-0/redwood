@@ -12,20 +12,20 @@ block ::= '{' stmt* '}'
 
 stmt ::= expr
        | ident '=' expr              Assignment, variable definition
-       | 'if' expr block             If statement
-         ('else if' expr block)?
-         ('else' block)?
        | 'while' expr block          While loop
        | 'for' ident (',' ident)?    For loop (value only, and key-value version)
          'in' expr block
        | 'return' expr               Return statement
        | 'func' ident '(' args ')'   Function definition
-         block
+            block
 
 expr ::= number                Float literal
        | string                String lieral
        | array
        | dictionary
+       | 'if' expr block       If statement
+         ('else if' expr block)?
+         ('else' block)?
        | true | false          Boolean literal
        | expr binop expr       Arithmetic
        | ident                 Variable access

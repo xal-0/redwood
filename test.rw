@@ -1,5 +1,4 @@
-func double(x) {
-  x + x
+x = 2
+while x == 2 {
+  print (x)
 }
-
-double(double(3))

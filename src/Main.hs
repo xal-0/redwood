@@ -16,6 +16,7 @@ main = do
       case parse (stmts <* eof) filename fileContents of
         Left err -> putStrLn (errorBundlePretty err)
         Right prog -> do
+          print prog
           result <- testInterpret prog
           case result of
             Left e -> print e

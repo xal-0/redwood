@@ -8,7 +8,7 @@ import Data.IORef
 import Data.List
 import qualified Data.Map as M
 import Syntax
-import Utils
+-- import Utils
 
 newtype Env = Env (M.Map Ident Value)
 
@@ -130,23 +130,23 @@ evalStmt (StmtAssign (ExprVariable v) e) = mdo
   pure ValueNull
 -- Assigning to a dictionary/array can't be recursive, because they're
 -- on the heap.
-evalStmt (StmtAssign (ExprIndex ref index) e) = do
-  ref' <- evalExpr ref >>= checkRef
-  index' <- evalExpr index
-  obj <- liftIO (readIORef ref')
-  e' <- evalExpr e
-  case obj of
-    ObjectArray a -> do
-      i <- checkInt index'
-      case replaceIdx a i e' of
-        Nothing -> throwError ErrIndex
-        Just a' -> do
-          liftIO (writeIORef ref' (ObjectArray a'))
-    ObjectDict d -> do
-      checkKey index'
-      let d' = M.insert index' e' d
-      liftIO (writeIORef ref' (ObjectDict d'))
-  pure ValueNull
+-- evalStmt (StmtAssign (ExprIndex ref index) e) = do
+--   ref' <- evalExpr ref >>= checkRef
+--   index' <- evalExpr index
+--   obj <- liftIO (readIORef ref')
+--   e' <- evalExpr e
+--   case obj of
+--     ObjectArray a -> do
+--       i <- checkInt index'
+--       case replaceIdx a i e' of
+--         Nothing -> throwError ErrIndex
+--         Just a' -> do
+--           liftIO (writeIORef ref' (ObjectArray a'))
+--     ObjectDict d -> do
+--       checkKey index'
+--       let d' = M.insert index' e' d
+--       liftIO (writeIORef ref' (ObjectDict d'))
+--   pure ValueNull
 evalStmt (StmtAssign _ _) = throwError ErrAssign
 evalStmt (StmtReturn Nothing) = pure ValueNull
 evalStmt (StmtReturn (Just r)) = evalExpr r
@@ -183,16 +183,16 @@ evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
   if conditionBool
     then evalBlock body
     else evalExpr (ExprIfElseChain xs els)
-evalExpr (ExprIndex ref index) = do
-  obj <- evalExpr ref >>= checkRef >>= liftIO . readIORef
-  index' <- evalExpr index
-  case obj of
-    ObjectArray a -> do
-      i <- checkInt index'
-      maybe (throwError ErrIndex) pure (a !!? i)
-    ObjectDict d -> do
-      checkKey index'
-      maybe (throwError ErrIndex) pure (M.lookup index' d)
+-- evalExpr (ExprIndex ref index) = do
+--   obj <- evalExpr ref >>= checkRef >>= liftIO . readIORef
+--   index' <- evalExpr index
+--   case obj of
+--     ObjectArray a -> do
+--       i <- checkInt index'
+--       maybe (throwError ErrIndex) pure (a !!? i)
+--     ObjectDict d -> do
+--       checkKey index'
+--       maybe (throwError ErrIndex) pure (M.lookup index' d)
 
 evalPrim :: Prim -> [Value] -> Interpreter Value
 evalPrim PrimPrint as = do
