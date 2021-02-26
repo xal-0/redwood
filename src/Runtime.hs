@@ -62,17 +62,17 @@ data VType
   | VTypeString
   | VTypeClosure
   | VTypeNull
-  | VTypeRef
   | VTypePrim
+  | VTypeArray
+  | VTypeDict
   deriving (Show, Eq)
 
 data Error
   = ErrLookup Ident
+  | ErrMismatch VType VType
   | ErrType VType VType
   | ErrArgs Int Int
-  | ErrEq
-  | ErrAdd
   | ErrAssign
-  | ErrKey
-  | ErrIndex
-  deriving (Show)
+  | ErrKey Value
+  | ErrIndex Value Value
+  | ErrMisc String
