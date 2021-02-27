@@ -11,10 +11,12 @@ import Parser
 import Runtime
 import Syntax
 import Utils
+import System.Random
 
 makeInterpreter :: [(Ident, Prim)] -> IO Interpreter
 makeInterpreter extraBuiltins = do
   let builtins =
+        initialBuiltins ++
         fmap
           (\(i, p) -> (i, ValuePrim p))
           (extraBuiltins ++ initialPrims)
@@ -44,6 +46,12 @@ evalCall interpreter var =
   let prog = StmtExpr (ExprCall (ExprVariable var) [])
    in runInterpret interpreter (evalStmt prog)
 
+initialBuiltins :: [(Ident, Value)]
+initialBuiltins =
+  [ ("pi", ValueNumber pi)
+  , ("E", ValueNumber (exp 1))
+  ]
+
 -- | Mappings from variable names to built-in functions.  Programs get
 -- these bindings in their environment when they start.
 initialPrims :: [(Ident, Prim)]
@@ -51,7 +59,22 @@ initialPrims =
   [ ("println", evalPrint True),
     ("print", evalPrint False),
     ("push", evalPush),
-    ("delete", evalDelete)
+    ("delete", evalDelete),
+    ("string", evalString),
+    ("length", evalLength),
+    ("sin", evalMathPrim "sin" sin),
+    ("cos", evalMathPrim "cos" cos),
+    ("tan", evalMathPrim "tan" tan),
+    ("asin", evalMathPrim "asin" asin),
+    ("acos", evalMathPrim "acos" acos),
+    ("atan", evalMathPrim "atan" atan),
+    ("sqrt", evalMathPrim "sqrt" sqrt),
+    ("log", evalMathPrim "log" log),
+    ("rand", evalRand False),
+    ("randi", evalRand True),
+    ("ceil", evalMathPrim "ceil" ((fromIntegral :: Int -> Double) . ceiling)),
+    ("floor", evalMathPrim "floor" ((fromIntegral :: Int -> Double) . floor)),
+    ("round", evalMathPrim "round" ((fromIntegral :: Int -> Double) . round))
   ]
 
 apply :: IORef Env -> [Ident] -> Block -> [Value] -> Interpret Value
@@ -225,6 +248,31 @@ evalDelete [ValueRef r, x] = do
   pure ValueNull
 evalDelete _ = throwError (ErrMisc "wrong arguments for delete")
 
+evalString :: Prim
+evalString [x] = ValueString <$> showValue x
+evalString _ = throwError (ErrMisc "string takes one argument")
+
+evalLength :: Prim
+evalLength [ValueString s] = pure (ValueNumber (fromIntegral (length s)))
+evalLength [ValueRef r] = do
+  o <- liftIO (readIORef r)
+  case o of
+    ObjectArray a -> pure (ValueNumber (fromIntegral (length a)))
+    ObjectDict d -> pure (ValueNumber (fromIntegral (M.size d)))
+evalLength _ = throwError (ErrMisc "length takes one argument")
+
+evalMathPrim :: String -> (Double -> Double) -> Prim
+evalMathPrim _ f [ValueNumber x] = pure (ValueNumber (f x))
+evalMathPrim name _ _ = throwError (ErrMisc (name ++ "takes one number argument"))
+
+evalRand :: Bool -> Prim
+evalRand False [ValueNumber l, ValueNumber h] = ValueNumber <$> liftIO (randomRIO (l, h))
+evalRand True [l, h] = do
+  l' <- checkInt l
+  r' <- checkInt h
+  ValueNumber . fromIntegral <$> liftIO (randomRIO (l', r'))
+evalRand _ _ = throwError (ErrMisc "rand takes two arguments")
+
 -- operations between two values
 evalBinop :: Binop -> Value -> Value -> Interpret Value
 evalBinop BinopPlus x y = addOrAppend x y
@@ -232,7 +280,7 @@ evalBinop BinopMinus x y = binopCheck checkNumber ValueNumber (-) x y
 evalBinop BinopExp x y = binopCheck checkNumber ValueNumber (**) x y
 evalBinop BinopMult x y = binopCheck checkNumber ValueNumber (*) x y
 evalBinop BinopDiv x y = binopCheck checkNumber ValueNumber (/) x y
-evalBinop BinopMod x y = binopCheck checkInt (ValueNumber . fromIntegral) mod x y
+evalBinop BinopMod x y = binopCheck checkNumber ValueNumber fmod x y
 evalBinop BinopLessThan x y = binopCheck checkKey ValueBool (<) x y
 evalBinop BinopGreaterThan x y = binopCheck checkKey ValueBool (>) x y
 evalBinop BinopGreaterThanEq x y = binopCheck checkKey ValueBool (>=) x y
@@ -241,6 +289,11 @@ evalBinop BinopEq x y = fmap ValueBool (deepEquals x y)
 evalBinop BinopNotEq x y = fmap (ValueBool . not) (deepEquals x y)
 evalBinop BinopAnd x y = binopCheck checkBool ValueBool (&&) x y
 evalBinop BinopOr x y = binopCheck checkBool ValueBool (||) x y
+
+-- | From https://stackoverflow.com/a/64163086. Weird omission from
+-- the standard library.
+fmod :: Double -> Double -> Double
+fmod x y = x - y * fromIntegral (floor (x / y) :: Int)
 
 deepEquals :: Value -> Value -> Interpret Bool
 deepEquals (ValueNumber x) (ValueNumber y) = pure (x == y)
