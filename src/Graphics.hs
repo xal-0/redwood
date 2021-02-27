@@ -9,6 +9,7 @@ import Graphics.Gloss.Interface.IO.Game
 import Interpreter
 import Runtime
 import System.Exit
+import Numeric
 
 data State = State
   { drawnPictures :: (IORef Picture),
@@ -83,9 +84,12 @@ addToPicture state p = do
 
 hexToColor :: String -> Interpret Color
 hexToColor [r1, r2, g1, g2, b1, b2] =
-  pure (makeColor (comp r1 r2) (comp g1 g2) (comp b1 b2) 0)
+  makeColor <$> comp r1 r2 <*> comp g1 g2 <*> comp b1 b2 <*> pure 0
   where
-    comp x y = (read [x] :: Float) * 16 + (read [y] :: Float)
+    comp :: Char -> Char -> Interpret Float
+    comp x y = case readHex [x, y] of
+      [(n, _)] -> pure (fromIntegral (n :: Int))
+      _ -> throwError (ErrMisc "invalid colour")
 hexToColor _ = throwError (ErrMisc "invalid colour")
 
 circleBuiltin :: State -> Prim
