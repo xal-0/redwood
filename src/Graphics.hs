@@ -84,7 +84,7 @@ addToPicture state p = do
 
 hexToColor :: String -> Interpret Color
 hexToColor [r1, r2, g1, g2, b1, b2] =
-  makeColor <$> comp r1 r2 <*> comp g1 g2 <*> comp b1 b2 <*> pure 0
+  makeColor <$> comp r1 r2 <*> comp g1 g2 <*> comp b1 b2 <*> pure 1
   where
     comp :: Char -> Char -> Interpret Float
     comp x y = case readHex [x, y] of
@@ -93,7 +93,7 @@ hexToColor [r1, r2, g1, g2, b1, b2] =
 hexToColor _ = throwError (ErrMisc "invalid colour")
 
 circleBuiltin :: State -> Prim
-circleBuiltin state [ValueNumber r, ValueString col, ValueNumber x, ValueNumber y] = do
+circleBuiltin state [ValueString col, ValueNumber r, ValueNumber x, ValueNumber y] = do
   col' <- hexToColor col
   addToPicture
     state

@@ -145,6 +145,7 @@ term =
         array,
         dictionary,
         ifElseChain,
+        ExprNull <$ symbol "null",
         variable,
         parens expr
       ]

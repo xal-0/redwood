@@ -81,4 +81,5 @@ data Expr
   | -- | An "x[y]" expression.  This either indexes into an array with
     -- | a number, or into a dictionary with a string.
     ExprIndex Expr Expr
+  | ExprNull
   deriving (Show)

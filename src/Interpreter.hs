@@ -160,6 +160,7 @@ evalExpr (ExprVariable v) = lookupEnv v
 evalExpr (ExprNumber n) = pure (ValueNumber n)
 evalExpr (ExprString n) = pure (ValueString n)
 evalExpr (ExprBool n) = pure (ValueBool n)
+evalExpr ExprNull = pure ValueNull
 evalExpr (ExprBinop op x y) = do
   x' <- evalExpr x
   y' <- evalExpr y
