@@ -72,7 +72,6 @@ circleBuiltin picture _ [ValueNumber r, ValueNumber x, ValueNumber y] = do
     )
   pure ValueNull
 circleBuiltin _ _ _ = throwError (ErrMisc "circle expects a radius, x, and y")
->>>>>>> ffa30f249fb397bd0261adf9f5829b8e5ae5d7fa
 
 keyBuiltin :: IORef Picture -> IORef (S.Set Key) -> Prim
 keyBuiltin _ keys [ValueString k] = do

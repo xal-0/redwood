@@ -1,0 +1,39 @@
+func printnFibonacci (a, b, n) {        # prints out the first n terms in the Fibonacci sequence that starts with a, b
+    if n > 0 {
+        print (a)
+        print (" ")
+        printnFibonacci (b, a + b, n - 1)
+    }
+}
+
+func map (f, array) {                   # maps function onto array
+    for key, value in array {
+        array[key] = f (value)          # updating an array while looping through it
+    }
+    return array
+}
+
+func quadraticFormula (a, b, c){        # finds the solution to a quadratic equation in the form ax^2 + bx + c = 0
+    return (-b + (b**2-4*a*c)**(1/2)) / (2 * a)
+}
+
+func double (x){ return 2 * x }
+
+print ("\n")
+
+print("Fibonacci: ")
+printnFibonacci (1, 1, 10)              # prints the first 10 values of Fibonacci
+print ("\n")
+
+arr = [1, 2, 3, 4, 5]
+print("Double array: ")
+print(map (double, arr))                # doubles every item in the array
+print ("\n")
+
+print("Possible quadratic formula: ")
+print(quadraticFormula (6, 11, -35))    # 6x^2 + 11x - 35 = 0   x = 5/3
+print ("\n")
+
+print("Pmpossible quadratic formula: ")
+print(quadraticFormula (2, 3, 4))       # impossible sqrt of negative number
+print ("\n\n")
