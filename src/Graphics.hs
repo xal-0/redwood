@@ -2,79 +2,173 @@ module Graphics where
 
 import Control.Monad.Except
 import Data.IORef
+import qualified Data.Map as M
 import qualified Data.Set as S
+import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game
 import Interpreter
 import Runtime
 import System.Exit
 
+data State = State
+  { drawnPictures :: (IORef Picture),
+    heldKeys :: (IORef (S.Set Key)),
+    bitmaps :: (IORef (M.Map String Picture))
+  }
+
 graphicsRun :: FilePath -> IO ()
 graphicsRun path = do
-  picture <- newIORef Blank
-  keys <- newIORef S.empty
-  int <- makeInterpreter (fmap (\(k, b) -> (k, b picture keys)) graphicsBuiltins)
+  state <- newState
+  int <- makeInterpreter (fmap (\(k, b) -> (k, b state)) graphicsBuiltins)
   success <- evalSource int path
   if not success
     then pure ()
     else
       playIO
-        (InWindow "Redwood" (800, 600) (10, 10))
-        white
-        30
+        (InWindow "Redwood" (400, 400) (10, 10))
+        black
+        60
         ()
-        (frame picture)
-        (inputs keys)
-        (update picture int)
+        (frame state)
+        (inputs state)
+        (update state int)
+
+newState :: IO State
+newState = do
+  pict <- newIORef Blank
+  keys <- newIORef S.empty
+  sprites <- newIORef M.empty
+  pure (State pict keys sprites)
 
 -- | Draws a Picture to be diplayed using the world state
-frame :: IORef Picture -> () -> IO Picture
-frame picture () = readIORef picture
+frame :: State -> () -> IO Picture
+frame state () = readIORef (drawnPictures state)
 
 -- | Change the key variables upon user input
-inputs :: IORef (S.Set Key) -> Event -> () -> IO ()
-inputs s (EventKey key Down _ _) () = do
-  modifyIORef s (S.insert key)
+inputs :: State -> Event -> () -> IO ()
+inputs state (EventKey key Down _ _) () = do
+  modifyIORef (heldKeys state) (S.insert key)
   pure ()
-inputs s (EventKey key Up _ _) () = do
-  modifyIORef s (S.delete key)
+inputs state (EventKey key Up _ _) () = do
+  modifyIORef (heldKeys state) (S.delete key)
   pure ()
 inputs _ _ () = pure ()
 
 -- | Calls the "update" function in the user's code.
-update :: IORef Picture -> Interpreter -> Float -> () -> IO ()
-update picture int _ state = do
-  writeIORef picture Blank
+update :: State -> Interpreter -> Float -> () -> IO ()
+update state int _ () = do
+  writeIORef (drawnPictures state) Blank
   result <- evalCall int "update"
   case result of
     Nothing -> exitFailure
-    Just _ -> pure state
+    Just _ -> pure ()
 
-graphicsBuiltins :: [(String, IORef Picture -> IORef (S.Set Key) -> Prim)]
+graphicsBuiltins :: [(String, State -> Prim)]
 graphicsBuiltins =
   [ ("key", keyBuiltin),
-    ("circle", circleBuiltin)
+    ("circle", circleBuiltin),
+    ("line", lineBuiltin),
+    ("rect", rectBuiltin),
+    ("sprite", spriteBuiltin),
+    ("text", textBuiltin)
   ]
 
-circleBuiltin :: IORef Picture -> IORef (S.Set Key) -> Prim
-circleBuiltin picture _ [ValueNumber r, ValueNumber x, ValueNumber y] = do
-  liftIO
-    ( modifyIORef
-        picture
-        ( \p ->
-            Pictures
-              [ Translate
-                  (realToFrac x)
-                  (realToFrac y)
-                  (Circle (realToFrac r)),
-                p
-              ]
+addToPicture :: State -> Picture -> Interpret Value
+addToPicture state p = do
+  liftIO (modifyIORef (drawnPictures state) f)
+  pure ValueNull
+  where
+    f (Pictures l) = Pictures (p : l)
+    f ps = Pictures [p, ps]
+
+hexToColor :: String -> Interpret Color
+hexToColor [r1, r2, g1, g2, b1, b2] =
+  pure (makeColor (comp r1 r2) (comp g1 g2) (comp b1 b2) 0)
+  where
+    comp x y = (read [x] :: Float) * 16 + (read [y] :: Float)
+hexToColor _ = throwError (ErrMisc "invalid colour")
+
+circleBuiltin :: State -> Prim
+circleBuiltin state [ValueNumber r, ValueString col, ValueNumber x, ValueNumber y] = do
+  col' <- hexToColor col
+  addToPicture
+    state
+    ( Color
+        col'
+        ( Translate
+            (realToFrac x)
+            (realToFrac y)
+            (Circle (realToFrac r))
         )
     )
-  pure ValueNull
-circleBuiltin _ _ _ = throwError (ErrMisc "circle expects a radius, x, and y")
+circleBuiltin _ _ = throwError (ErrMisc "circle expects a radius, colour, x, and y")
 
-keyBuiltin :: IORef Picture -> IORef (S.Set Key) -> Prim
-keyBuiltin _ keys [ValueString k] = do
+lineBuiltin :: State -> Prim
+lineBuiltin state [ValueString col, ValueNumber x1, ValueNumber y1, ValueNumber x2, ValueNumber y2] = do
+  col' <- hexToColor col
+  addToPicture
+    state
+    ( Color
+        col'
+        ( Line
+            [ (realToFrac x1, realToFrac y1),
+              (realToFrac x2, realToFrac y2)
+            ]
+        )
+    )
+lineBuiltin _ _ = throwError (ErrMisc "line takes a colour, x1, y1, x2, and y2")
+
+spriteBuiltin :: State -> Prim
+spriteBuiltin state [ValueString filename, ValueNumber x, ValueNumber y] = do
+  bms <- liftIO (readIORef (bitmaps state))
+  case M.lookup filename bms of
+    Just bm -> draw bm
+    Nothing -> do
+      bm <- liftIO (loadBMP filename)
+      liftIO (writeIORef (bitmaps state) (M.insert filename bm bms))
+      draw bm
+  where
+    draw bm = addToPicture state (Translate (realToFrac x) (realToFrac y) bm)
+spriteBuiltin _ _ = throwError (ErrMisc "sprite takes a sprite filename, x, and y")
+
+rectBuiltin :: State -> Prim
+rectBuiltin state [ValueString col, ValueNumber x, ValueNumber y, ValueNumber w, ValueNumber h] = do
+  col' <- hexToColor col
+  addToPicture
+    state
+    ( Color
+        col'
+        ( Polygon
+            [ (realToFrac x, realToFrac y),
+              (realToFrac x, realToFrac (y + h)),
+              (realToFrac (x + w), realToFrac (y + h)),
+              (realToFrac (x + w), realToFrac y)
+            ]
+        )
+    )
+rectBuiltin _ _ = throwError (ErrMisc "rect takes a colour x, y, w, and h")
+
+textBuiltin :: State -> Prim
+textBuiltin state [ValueString col, ValueNumber size, ValueNumber x, ValueNumber y, ValueString txt] = do
+  col' <- hexToColor col
+  addToPicture
+    state
+    ( Translate
+        (realToFrac x)
+        (realToFrac y)
+        ( Scale
+            (realToFrac size)
+            (realToFrac size)
+            ( Color
+                col'
+                (Text txt)
+            )
+        )
+    )
+textBuiltin _ _ = throwError (ErrMisc "text takes a colour, size, x, y, and a string")
+
+keyBuiltin :: State -> Prim
+keyBuiltin state [ValueString k] = do
   key <- case k of
     "space" -> pure (SpecialKey KeySpace)
     "up" -> pure (SpecialKey KeyUp)
@@ -83,6 +177,6 @@ keyBuiltin _ keys [ValueString k] = do
     "right" -> pure (SpecialKey KeyRight)
     [c] -> pure (Char c)
     _ -> throwError (ErrMisc "key expects one string argument")
-  keys' <- liftIO (readIORef keys)
+  keys' <- liftIO (readIORef (heldKeys state))
   pure (ValueBool (key `S.member` keys'))
-keyBuiltin _ _ _ = throwError (ErrMisc "key expects one string argument")
+keyBuiltin _ _ = throwError (ErrMisc "key expects one string argument")

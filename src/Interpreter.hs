@@ -10,16 +10,16 @@ import Data.Maybe
 import Parser
 import Runtime
 import Syntax
-import Utils
 import System.Random
+import Utils
 
 makeInterpreter :: [(Ident, Prim)] -> IO Interpreter
 makeInterpreter extraBuiltins = do
   let builtins =
-        initialBuiltins ++
-        fmap
-          (\(i, p) -> (i, ValuePrim p))
-          (extraBuiltins ++ initialPrims)
+        initialBuiltins
+          ++ fmap
+            (\(i, p) -> (i, ValuePrim p))
+            (extraBuiltins ++ initialPrims)
       env = Env (M.fromList builtins) Nothing
   ref <- newIORef env
   pure (Interpreter ref)
@@ -48,8 +48,8 @@ evalCall interpreter var =
 
 initialBuiltins :: [(Ident, Value)]
 initialBuiltins =
-  [ ("pi", ValueNumber pi)
-  , ("E", ValueNumber (exp 1))
+  [ ("pi", ValueNumber pi),
+    ("E", ValueNumber (exp 1))
   ]
 
 -- | Mappings from variable names to built-in functions.  Programs get
