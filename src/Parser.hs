@@ -10,6 +10,7 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 type Parser = Parsec Void String
 
+-- Opens a file and uses Megaparsec to parse the file for the interpreter
 parseBlock :: String -> IO (Maybe Block)
 parseBlock path = do
   contents <- readFile path
@@ -33,19 +34,23 @@ stmt =
         StmtExpr <$> expr
       ]
 
+-- matches an assignment, which is composed of and expression, "=", and another expression
 stmtAssignment :: Parser Stmt
 stmtAssignment =
   StmtAssign <$> expr
     <*> (symbol "=" *> expr)
 
+-- matches the retern expression, which may be followed by an expression to be returned
 stmtReturn :: Parser Stmt
 stmtReturn = symbol "return" *> (StmtReturn <$> optional expr)
 
+-- matches a while loop
 stmtWhile :: Parser Stmt
 stmtWhile =
   symbol "while"
     *> (StmtWhile <$> expr <*> stmtBlock)
 
+-- matches an enhanced for loop, similar in syntax to python for loops
 stmtFor :: Parser Stmt
 stmtFor = do
   index <- symbol "for" *> identifier
@@ -54,6 +59,7 @@ stmtFor = do
   body <- stmtBlock
   pure (StmtFor index value collection body)
 
+-- matches a function definition
 stmtFuncDef :: Parser Stmt
 stmtFuncDef =
   symbol "func"
@@ -62,6 +68,7 @@ stmtFuncDef =
 funcArgs :: Parser [Ident]
 funcArgs = parens (identifier `sepBy` symbol ",")
 
+-- a block is a section of code surrounded by braces, for example the body of a function
 stmtBlock :: Parser Block
 stmtBlock = braces stmts
   where
@@ -126,6 +133,7 @@ expr = label "expression" $ makeExprParser term ops
       fieldName <- identifier
       pure (`ExprIndex` ExprString fieldName)
 
+-- a term is the simplest form of an expression
 term :: Parser Expr
 term =
   lexeme $
@@ -141,6 +149,7 @@ term =
         parens expr
       ]
 
+-- matches an if statement followed by any number of else if clauses and a possible else
 ifElseChain :: Parser Expr
 ifElseChain = do
   ifClause <- symbol "if" *> clause
@@ -157,6 +166,7 @@ exprFunc =
 variable :: Parser Expr
 variable = ExprVariable <$> identifier
 
+-- matches an expression that can be interpreted as a single number, like 5 or 3.2
 number :: Parser Expr
 number =
   label "number" $
@@ -174,6 +184,7 @@ str =
   label "string" $
     ExprString <$> (char '"' >> manyTill L.charLiteral (char '"'))
 
+-- matches an array definition in the form [1, 3, 5]
 array :: Parser Expr
 array = label "array" $ do
   symbol "[" <* sc'
@@ -182,6 +193,7 @@ array = label "array" $ do
   symbol "]"
   pure (ExprArray a)
 
+-- matches an dictionary definition in the form {"key":value, "cool":beans}
 dictionary :: Parser Expr
 dictionary = label "dictionary" $ do
   symbol "{" <* sc'
@@ -196,6 +208,7 @@ dictionary = label "dictionary" $ do
 commaNewline :: Parser ()
 commaNewline = void (symbol "," *> sc')
 
+-- matches the name of a function or variable
 identifier :: Parser String
 identifier = label "identifier" $
   lexeme $ do
