@@ -79,8 +79,7 @@ addToPicture state p = do
   liftIO (modifyIORef (drawnPictures state) f)
   pure ValueNull
   where
-    f (Pictures l) = Pictures (p : l)
-    f ps = Pictures [p, ps]
+    f ps = Pictures [ps, p]
 
 hexToColor :: String -> Interpret Color
 hexToColor [r1, r2, g1, g2, b1, b2] =
