@@ -23,42 +23,57 @@
 ;;; Code:
 
 (defconst redwood-font-lock-keywords
-  `(("func\\s-+\\(\\sw+\\)" (1 font-lock-function-name-face)
-     ("(\\(\\w+\\)"  nil nil (1 font-lock-variable-name-face))
-     (",\s-*\\(\\w+\\)"  nil nil (1 font-lock-variable-name-face)))
-    (,(regexp-opt '("func\s" "for\s" "in\s" "while\s" "if\s" "else\s" "return\s"))
-     . font-lock-keyword-face)
-    (,(regexp-opt '("null\s" "true\s" "false\s")) . font-lock-constant-face)
-    (,(regexp-opt '("^\\(print\\)$")) 1 font-lock-builtin-face)))
+  `(,(rx (seq symbol-start
+              (or "func" "for" "in" "while" "if" "else" "return")
+              symbol-end))
+    (,(rx (seq symbol-start (or "null" "true" "false") symbol-end))
+     . font-lock-constant-face)
+    (,(rx (seq symbol-start
+               (or "println" "print" "push" "delete" "string" "length"
+                   "sin" "cos" "tan" "asin" "acos" "atan" "sqrt" "log"
+                   "rand" "randi" "ceil" "floor" "round" "key"
+                   "circle" "line" "sprite" "text" "rect")
+               symbol-end))
+     . font-lock-builtin-face)
+    (,(rx (seq (group (+ word)) (* space) ":"))
+     1 font-lock-variable-name-face)
+    (,(rx (seq symbol-start "func" symbol-end (* space)
+               symbol-start (group (+ word)) symbol-end))
+     (1 font-lock-function-name-face)
+     (,(rx (seq "(" (* space) (group (+ word)))) nil nil (1 font-lock-variable-name-face))
+     (,(rx (seq "," (* space) (group (+ word)))) nil nil (1 font-lock-variable-name-face)))))
 
-(defvar redwood-mode-syntax-table
+(defvar redwood-syntax-table
   (let ((syntax-table (make-syntax-table)))
     (modify-syntax-entry ?# "<" syntax-table)
     (modify-syntax-entry ?\n ">" syntax-table)
+    (modify-syntax-entry ?\n "." syntax-table)
     (modify-syntax-entry ?_ "w" syntax-table)
     syntax-table))
 
-(defun redwood-smie-rules (kind token)
-  (pcase (cons kind token)
-    (`(:elem . basic) sample-indent-basic)
-    (`(,_ . ",") (smie-rule-separator kind))
-    (`(:after . ":=") sample-indent-basic)
-    (`(:before . ,(or `"begin" `"(" `"{")))
-     (if (smie-rule-hanging-p) (smie-rule-parent)))
-    (`(:before . "if")
-     (and (not (smie-rule-bolp)) (smie-rule-prev-p "else")
-          (smie-rule-parent))))
+(defun redwood-indent-line-function ()
+  (save-excursion
+    (beginning-of-line)
+    (search-forward-regexp "\\s)" (line-end-position) t)
+    (indent-line-to (* 2 (car (syntax-ppss)))))
+  (when
+      ;; Suggested by https://emacs.stackexchange.com/questions/16792
+      (save-excursion
+        (beginning-of-line)
+        (looking-at-p "[[:space:]]*$"))
+    (end-of-line)))
 
 ;;;###autoload
 (define-derived-mode redwood-mode prog-mode "redwood"
   "Major mode for the Redwood programming language."
   (setq font-lock-defaults '(redwood-font-lock-keywords))
-  (set-syntax-table redwood-mode-syntax-table)
-  (setq-local comment-start "# "
-              comment-end ""
-              indent-tabs-mode nil
-              tab-width 2
-              indent-line-function 'tab-to-tab-stop))
+  (set-syntax-table redwood-syntax-table)
+  (setq-local
+   comment-start "# "
+   comment-end ""
+   indent-tabs-mode nil
+   tab-width 2
+   indent-line-function 'redwood-indent-line-function))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist (cons "\\.rw\\'" 'redwood-mode))
