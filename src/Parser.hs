@@ -10,7 +10,8 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 type Parser = Parsec Void String
 
--- Opens a file and uses Megaparsec to parse the file for the interpreter
+-- | Opens a file and uses Megaparsec to parse the file for the
+-- interpreter.
 parseBlock :: String -> IO (Maybe Block)
 parseBlock path = do
   contents <- readFile path
@@ -34,23 +35,27 @@ stmt =
         StmtExpr <$> expr
       ]
 
--- matches an assignment, which is composed of and expression, "=", and another expression
+-- | Matches an assignment, which is composed of and expression, "=",
+-- and another expression
 stmtAssignment :: Parser Stmt
 stmtAssignment =
   StmtAssign <$> expr
     <*> (symbol "=" *> expr)
 
--- matches the retern expression, which may be followed by an expression to be returned
+-- | Matches the retern expression, which may be followed by an expression to be returned.
 stmtReturn :: Parser Stmt
 stmtReturn = symbol "return" *> (StmtReturn <$> optional expr)
 
--- matches a while loop
+-- | Matches a while loop.
 stmtWhile :: Parser Stmt
 stmtWhile =
   symbol "while"
     *> (StmtWhile <$> expr <*> stmtBlock)
 
--- matches an enhanced for loop, similar in syntax to python for loops
+-- | Matches an enhanced for loop, similar in syntax to python for
+-- loops.  For loops can have either a single binder, where it will
+-- iterate over array items or dictionary keys, or two binders, where
+-- it will iterate over key-value pairs.
 stmtFor :: Parser Stmt
 stmtFor = do
   index <- symbol "for" *> identifier

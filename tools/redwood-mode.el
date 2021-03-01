@@ -26,12 +26,12 @@
   `(,(rx (seq symbol-start
               (or "func" "for" "in" "while" "if" "else" "return")
               symbol-end))
-    (,(rx (seq symbol-start (or "null" "true" "false") symbol-end))
+    (,(rx (seq symbol-start (or "null" "true" "false" "pi" "E") symbol-end))
      . font-lock-constant-face)
     (,(rx (seq symbol-start
                (or "println" "print" "push" "delete" "string" "length"
                    "sin" "cos" "tan" "asin" "acos" "atan" "sqrt" "log"
-                   "rand" "randi" "ceil" "floor" "round" "key"
+                   "rand" "randi" "ceil" "floor" "round" "abs" "key"
                    "circle" "line" "sprite" "text" "rect")
                symbol-end))
      . font-lock-builtin-face)
@@ -47,7 +47,6 @@
   (let ((syntax-table (make-syntax-table)))
     (modify-syntax-entry ?# "<" syntax-table)
     (modify-syntax-entry ?\n ">" syntax-table)
-    (modify-syntax-entry ?\n "." syntax-table)
     (modify-syntax-entry ?_ "w" syntax-table)
     syntax-table))
 
