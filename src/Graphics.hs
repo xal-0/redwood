@@ -10,12 +10,14 @@ import Interpreter
 import Numeric
 import Runtime
 import System.Exit
+import System.FilePath.Posix
 
 -- | Extra state for the graphical interpreter.  The extra builtins
 -- can read/write these variables, and they are used to communicate
 -- things like the state of the current frame, helds keys, etc.
 data State = State
-  { drawnPictures :: IORef Picture,
+  { directory :: FilePath,
+    drawnPictures :: IORef Picture,
     heldKeys :: IORef (S.Set Key),
     bitmaps :: IORef (M.Map String Picture)
   }
@@ -24,7 +26,7 @@ data State = State
 -- environment.
 graphicsRun :: FilePath -> IO ()
 graphicsRun path = do
-  state <- newState
+  state <- newState path
   int <- makeInterpreter (fmap (\(k, b) -> (k, b state)) graphicsBuiltins)
   success <- evalSource int path
   if not success
@@ -40,12 +42,12 @@ graphicsRun path = do
         (update state int)
 
 -- | Make a fresh state of the graphical interpreter.
-newState :: IO State
-newState = do
+newState :: FilePath -> IO State
+newState path = do
   pict <- newIORef Blank
   keys <- newIORef S.empty
   sprites <- newIORef M.empty
-  pure (State pict keys sprites)
+  pure (State (takeDirectory path) pict keys sprites)
 
 -- | Read the Picture of the current frame to be displayed using
 -- gloss.
@@ -145,7 +147,7 @@ spriteBuiltin state [ValueString filename, ValueNumber x, ValueNumber y] = do
   case M.lookup filename bms of
     Just bm -> draw bm
     Nothing -> do
-      bm <- liftIO (loadBMP filename)
+      bm <- liftIO (loadBMP (directory state </> filename))
       liftIO (writeIORef (bitmaps state) (M.insert filename bm bms))
       draw bm
   where

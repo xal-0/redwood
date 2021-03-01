@@ -362,8 +362,8 @@ deepEquals (ValueRef x) (ValueRef y) = do
       let eq ((k1, v1), (k2, v2)) = fmap (k1 == k2 &&) (deepEquals v1 v2)
           pairs = zip (M.toAscList dx) (M.toAscList dy)
        in fmap and (traverse eq pairs)
-    objEquals o1 o2 = throwRunError (ErrType (objectType o1) (objectType o2))
-deepEquals x y = ErrType <$> valueType x <*> valueType y >>= throwRunError
+    objEquals _ _ = pure False
+deepEquals _ _ = pure False
 
 -- | If the two values are numbers, add them.  If they are arrays or
 -- strings, append them (non-mutating).  If it is a dictionary,

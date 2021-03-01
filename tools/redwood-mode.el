@@ -53,7 +53,8 @@
 (defun redwood-indent-line-function ()
   (save-excursion
     (beginning-of-line)
-    (search-forward-regexp "\\s)" (line-end-position) t)
+    (while
+        (search-forward-regexp "\\s)" (line-end-position) t))
     (indent-line-to (* 2 (car (syntax-ppss)))))
   (when
       ;; Suggested by https://emacs.stackexchange.com/questions/16792

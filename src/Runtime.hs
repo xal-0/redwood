@@ -53,10 +53,13 @@ instance Eq Value where
 
 instance Ord Value where
   ValueNumber x `compare` ValueNumber y = x `compare` y
+  ValueNumber _ `compare` _ = LT
   ValueBool x `compare` ValueBool y = x `compare` y
+  ValueBool _ `compare` _ = LT
   ValueString x `compare` ValueString y = x `compare` y
+  ValueString _ `compare` _ = LT
   ValueNull `compare` ValueNull = EQ
-  _ `compare` _ = error "equality is not defined on function or reference types"
+  _ `compare` _ = error "ordering is not defined on function or reference types"
 
 -- | An object on the heap.  Functions that modify objects can write
 -- to the IORef pointing to us.
