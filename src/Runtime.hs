@@ -20,16 +20,16 @@ data Value
   | ValueBool Bool
   | ValueString String
   | -- | A closure.  When you evaluate a functione expression, it
-    -- | closes over its local envinrionment and returns it in one of
-    -- | these (lexical scope).
+    -- closes over its local envinrionment and returns it in one of
+    -- these (lexical scope).
     ValueClosure (IORef Env) [Ident] Block
   | ValueNull
   | -- | A reference to an object on the heap.  This is for variables
-    -- | that refer to things that can be mutated, like arrays or
-    -- | dictionaries.  When you pass a reference into a function, the
-    -- | reference is copied, but the object that it points to is not.
-    -- | Assigning to a dictionary/array access expression mutates the
-    -- | object pointed to by the reference.
+    -- that refer to things that can be mutated, like arrays or
+    -- dictionaries.  When you pass a reference into a function, the
+    -- reference is copied, but the object that it points to is not.
+    -- Assigning to a dictionary/array access expression mutates the
+    -- object pointed to by the reference.
     ValueRef (IORef Object)
   | -- | A builtin function, like print.
     ValuePrim Prim
@@ -77,6 +77,7 @@ instance Show VType where
   show VTypeArray = "array"
   show VTypeDict = "dictionary"
 
+-- | A runtime error.
 data Error
   = ErrLookup Ident
   | ErrMismatch VType VType

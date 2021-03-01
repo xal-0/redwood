@@ -20,9 +20,12 @@ data Stmt
     -- are allowed there (a variable, an array access, or a
     -- dictionary access.)
     StmtAssign Expr Expr
-  | StmtReturn (Maybe Expr)
+  | -- | A return statement immediately exits the function, returning
+    -- either the given expression, or null.
+    StmtReturn (Maybe Expr)
   | StmtWhile Expr Block
-  | StmtFor Ident (Maybe Ident) Expr Block
+  | -- | A for loop, either the one or two variable form.
+    StmtFor Ident (Maybe Ident) Expr Block
   | -- | Defines a function with the given name, which is possibly
     -- recursive.
     StmtFunc Ident [Ident] Block
@@ -46,7 +49,7 @@ data Binop
   | BinopExp
   deriving (Show)
 
--- | operations with a single operator
+-- | Operations with a single argument.
 data Monop
   = MonopNot
   | MonopNeg
@@ -66,7 +69,7 @@ data Expr
     ExprIfElseChain [(Expr, Block)] (Maybe Block)
   | -- | A binary operation (arithmetic).
     ExprBinop Binop Expr Expr
-  | -- | A binary operation (arithmetic).
+  | -- | A unary operation (arithmetic).
     ExprMonop Monop Expr
   | -- | Call a function (really just an expression that evaluates to
     -- a closure) with some arguments.
