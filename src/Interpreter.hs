@@ -72,6 +72,7 @@ initialPrims =
     ("log", evalMathPrim "log" log),
     ("rand", evalRand False),
     ("randi", evalRand True),
+    ("abs", evalMathPrim "abs" abs),
     ("ceil", evalMathPrim "ceil" ((fromIntegral :: Int -> Double) . ceiling)),
     ("floor", evalMathPrim "floor" ((fromIntegral :: Int -> Double) . floor)),
     ("round", evalMathPrim "round" ((fromIntegral :: Int -> Double) . round))
