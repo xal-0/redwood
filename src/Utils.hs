@@ -5,7 +5,7 @@ module Utils where
 (!!?) :: [a] -> Int -> Maybe a
 [] !!? _ = Nothing
 (x : _) !!? 0 = Just x
-(_ : xs) !!? n = xs !!? n
+(_ : xs) !!? n = xs !!? (n - 1)
 
 -- | Replace an element in a list, safely.
 replaceIdx :: [a] -> Int -> a -> Maybe [a]
