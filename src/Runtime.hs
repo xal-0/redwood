@@ -6,10 +6,18 @@ import Data.IORef
 import qualified Data.Map as M
 import Syntax
 
+-- | An interpreter is just a reference to the outermost scope.
 newtype Interpreter = Interpreter (IORef Env)
 
-type Interpret a = ReaderT (IORef Env) (ExceptT Error IO) a
+-- | The Interpret monad can read a reference to the current
+-- environment, and throw a runtime error or a value that is being
+-- returned.
+type Interpret a = ReaderT (IORef Env) (ExceptT (Either Error Value) IO) a
 
+-- | An environment is a map from variables to values (which may be
+-- either immutable values, or references to mutable values on the
+-- heap, as described below).  An environment can optionally have a
+-- parent scope.
 data Env = Env (M.Map Ident Value) (Maybe (IORef Env))
 
 -- | An immutable value at runtime.  Variables bind to these directly:
