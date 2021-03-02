@@ -1,9 +1,12 @@
 module Main where
 
+import Graphics
 import Interpreter
 import System.Environment
-import Graphics
 
+-- | Parse the command line arguments, and run the source code
+-- provided as the last argument.  If the "-c" flag is provided, do
+-- not run the graphical environment.
 main :: IO ()
 main = do
   args <- getArgs

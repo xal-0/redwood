@@ -13,6 +13,7 @@ import Syntax
 import System.Random
 import Utils
 
+-- | Create a fresh interpreter with the default global environment.
 makeInterpreter :: [(Ident, Prim)] -> IO Interpreter
 makeInterpreter extraBuiltins = do
   let builtins =
@@ -24,16 +25,24 @@ makeInterpreter extraBuiltins = do
   ref <- newIORef env
   pure (Interpreter ref)
 
+-- | Helper function that executes an interpreter action (possibly
+-- mutating the interpreter's state).  On success, returns the result.
+-- On failure, pretty-print the error and return Nothing.
 runInterpret :: Interpreter -> Interpret a -> IO (Maybe a)
 runInterpret (Interpreter ref) int = do
   result <- runExceptT (runReaderT int ref)
   case result of
-    Left err -> do
+    Left (Left err) -> do
       Right str <- runExceptT (runReaderT (showError err) ref)
       putStrLn ("error: " ++ str)
       pure Nothing
+    Left (Right _) -> do
+      putStrLn "error: cannot return from toplevel code"
+      pure Nothing
     Right a -> pure (Just a)
 
+-- | Load and evaluate the source code at the path.  If there is an
+-- error, pretty-print it and return False.
 evalSource :: Interpreter -> FilePath -> IO Bool
 evalSource interpreter path = do
   block <- parseBlock path
@@ -41,11 +50,15 @@ evalSource interpreter path = do
     Nothing -> pure False
     Just b -> fmap isJust (runInterpret interpreter (evalBlock b))
 
+-- | Call a function with no arguments, in an existing interpreter
+-- environment.  The function must be defined (bound to a variable).
 evalCall :: Interpreter -> String -> IO (Maybe Value)
 evalCall interpreter var =
   let prog = StmtExpr (ExprCall (ExprVariable var) [])
    in runInterpret interpreter (evalStmt prog)
 
+-- | A list of bindings to values that are put into every program when
+-- it starts evaluating.
 initialBuiltins :: [(Ident, Value)]
 initialBuiltins =
   [ ("pi", ValueNumber pi),
@@ -72,21 +85,32 @@ initialPrims =
     ("log", evalMathPrim "log" log),
     ("rand", evalRand False),
     ("randi", evalRand True),
+    ("abs", evalMathPrim "abs" abs),
     ("ceil", evalMathPrim "ceil" ((fromIntegral :: Int -> Double) . ceiling)),
     ("floor", evalMathPrim "floor" ((fromIntegral :: Int -> Double) . floor)),
     ("round", evalMathPrim "round" ((fromIntegral :: Int -> Double) . round))
   ]
 
+-- | Given an environment, list of formal parameters, a function body,
+-- and arguments to bind to those parameters, evaluate the function
+-- body in the environment augmented with the parameters bound to the
+-- arguments.
 apply :: IORef Env -> [Ident] -> Block -> [Value] -> Interpret Value
 apply env params body args
   | length params /= length args =
-    throwError
+    throwRunError
       (ErrArgs (length params) (length args))
   | otherwise = do
     let argBinds = M.fromList (zip params args)
     env' <- liftIO (newIORef (Env argBinds (Just env)))
     local (const env') (evalBlock body)
+      `catchError` handleReturn
+  where
+    handleReturn (Left e) = throwRunError e
+    handleReturn (Right v) = pure v
 
+-- | Given a list of variables, and values to bind to them, and a
+-- block, evaluate the block in a fresh scope containing the bindings.
 evalScope :: [(Ident, Value)] -> Block -> Interpret Value
 evalScope binds block = do
   parent <- ask
@@ -94,12 +118,14 @@ evalScope binds block = do
   env' <- liftIO (newIORef env)
   local (const env') (evalBlock block)
 
+-- | Evaluate a block in the current scope.
 evalBlock :: Block -> Interpret Value
 evalBlock [] = pure ValueNull
 evalBlock (s@(StmtReturn _) : _) = evalStmt s
 evalBlock [stmt] = evalStmt stmt
 evalBlock (stmt : stmts) = evalStmt stmt >> evalBlock stmts
 
+-- | Evaluate a statement in the current scope.
 evalStmt :: Stmt -> Interpret Value
 evalStmt s@(StmtWhile condition conditional) = do
   conditionValue <- evalExpr condition
@@ -128,7 +154,7 @@ evalStmt (StmtAssign (ExprIndex indexable index) e) = do
     ObjectArray a -> do
       i <- checkInt index'
       case replaceIdx a i e' of
-        Nothing -> throwError (ErrIndex indexable' index')
+        Nothing -> throwRunError (ErrIndex indexable' index')
         Just a' -> do
           liftIO (writeIORef ref' (ObjectArray a'))
     ObjectDict d -> do
@@ -136,25 +162,31 @@ evalStmt (StmtAssign (ExprIndex indexable index) e) = do
       let d' = M.insert index' e' d
       liftIO (writeIORef ref' (ObjectDict d'))
   pure ValueNull
-evalStmt (StmtAssign _ _) = throwError ErrAssign
-evalStmt (StmtReturn Nothing) = pure ValueNull
-evalStmt (StmtReturn (Just r)) = evalExpr r
+evalStmt (StmtAssign _ _) = throwRunError ErrAssign
+evalStmt (StmtReturn Nothing) = throwReturn ValueNull
+evalStmt (StmtReturn (Just r)) = evalExpr r >>= throwReturn
 
+-- | Evaluate a for loop.  Can take either one variable, or two.  With
+-- one variable, it will iterate over the elements of an array, or the
+-- keys of a dictionary.  With two variables, it will iterate over the
+-- keys and values (respectively) of a dictionary.  Evaluates the loop
+-- body in a new scope with the new bindings for every iteration.
 evalFor :: Ident -> Maybe Ident -> Value -> Block -> Interpret ()
 evalFor value Nothing (ValueRef r) body = do
   obj <- liftIO (readIORef r)
   case obj of
     ObjectArray a -> traverse_ (\v -> evalScope [(value, v)] body) a
-    _ -> throwError (ErrType VTypeArray (objectType obj))
-evalFor _ Nothing v _ = ErrType VTypeArray <$> valueType v >>= throwError
+    _ -> throwRunError (ErrType VTypeArray (objectType obj))
+evalFor _ Nothing v _ = ErrType VTypeArray <$> valueType v >>= throwRunError
 evalFor key (Just value) (ValueRef r) body = do
   obj <- liftIO (readIORef r)
   pairs <- case obj of
     ObjectArray a -> pure (zip (fmap ValueNumber [0 ..]) a)
     ObjectDict d -> pure (M.toList d)
   traverse_ (\(k, v) -> evalScope [(value, v), (key, k)] body) pairs
-evalFor _ (Just _) v _ = ErrType VTypeDict <$> valueType v >>= throwError
+evalFor _ (Just _) v _ = ErrType VTypeDict <$> valueType v >>= throwRunError
 
+-- | Evaluate an expression in the current scope.
 evalExpr :: Expr -> Interpret Value
 evalExpr (ExprVariable v) = lookupEnv v
 evalExpr (ExprNumber n) = pure (ValueNumber n)
@@ -174,7 +206,7 @@ evalExpr (ExprCall f as) = do
   case f' of
     ValueClosure env params body -> apply env params body as'
     ValuePrim p -> p as'
-    _ -> ErrType VTypeClosure <$> valueType f' >>= throwError
+    _ -> ErrType VTypeClosure <$> valueType f' >>= throwRunError
 evalExpr (ExprFunc ps body) = do
   env <- ask
   pure (ValueClosure env ps body)
@@ -199,23 +231,25 @@ evalExpr (ExprIfElseChain ((cond, body) : xs) els) = do
 evalExpr (ExprIndex x index) = do
   x' <- evalExpr x
   index' <- evalExpr index
-  let err = maybe (throwError (ErrIndex x' index')) pure
+  let err = maybe (throwRunError (ErrIndex x' index')) pure
   case x' of
     ValueString s -> do
       i <- checkInt index'
-      c <- maybe (throwError (ErrIndex x' index')) pure (s !!? i)
+      c <- maybe (throwRunError (ErrIndex x' index')) pure (s !!? i)
       pure (ValueString [c])
     ValueRef ref -> do
       obj <- liftIO (readIORef ref)
       case obj of
         ObjectArray a -> do
           i <- checkInt index'
-          maybe (throwError (ErrIndex x' index')) pure (a !!? i)
+          maybe (throwRunError (ErrIndex x' index')) pure (a !!? i)
         ObjectDict d -> do
           _ <- checkKey index'
           err (M.lookup index' d)
     _ -> err Nothing
 
+-- | Print the given value.  The first argument determines whether it
+-- is terminated with a newline or not.
 evalPrint :: Bool -> Prim
 evalPrint nl as = do
   strs <- traverse showValue as
@@ -223,15 +257,18 @@ evalPrint nl as = do
   liftIO (if nl then putStrLn "" else pure ())
   pure ValueNull
 
+-- | Push a value to the end of an array, mutating it.
 evalPush :: Prim
 evalPush [ValueRef r, x] = do
   o <- liftIO (readIORef r)
   case o of
     ObjectArray a -> liftIO (writeIORef r (ObjectArray (a ++ [x])))
-    _ -> throwError (ErrMismatch VTypeArray (objectType o))
+    _ -> throwRunError (ErrMismatch VTypeArray (objectType o))
   pure ValueNull
-evalPush _ = throwError (ErrMisc "wrong arguments for push")
+evalPush _ = throwRunError (ErrMisc "wrong arguments for push")
 
+-- | Delete (mutating) the given index or key from an array or
+-- dictionary, respectively.
 evalDelete :: Prim
 evalDelete [ValueRef r, x] = do
   o <- liftIO (readIORef r)
@@ -239,20 +276,24 @@ evalDelete [ValueRef r, x] = do
     ObjectArray a -> do
       i <- checkInt x
       if i >= length a
-        then throwError (ErrIndex (ValueRef r) x)
+        then throwRunError (ErrIndex (ValueRef r) x)
         else liftIO (writeIORef r (ObjectArray (take i a ++ drop (i + 1) a)))
     ObjectDict d -> do
       _ <- checkKey x
       if M.member x d
         then liftIO (writeIORef r (ObjectDict (M.delete x d)))
-        else throwError (ErrIndex (ValueRef r) x)
+        else throwRunError (ErrIndex (ValueRef r) x)
   pure ValueNull
-evalDelete _ = throwError (ErrMisc "wrong arguments for delete")
+evalDelete _ = throwRunError (ErrMisc "wrong arguments for delete")
 
+-- | Convert the given value to a string, in the same way that print
+-- would show it.
 evalString :: Prim
 evalString [x] = ValueString <$> showValue x
-evalString _ = throwError (ErrMisc "string takes one argument")
+evalString _ = throwRunError (ErrMisc "string takes one argument")
 
+-- | Find the length of the given array, or the number of keys in a
+-- dictionary.
 evalLength :: Prim
 evalLength [ValueString s] = pure (ValueNumber (fromIntegral (length s)))
 evalLength [ValueRef r] = do
@@ -260,21 +301,25 @@ evalLength [ValueRef r] = do
   case o of
     ObjectArray a -> pure (ValueNumber (fromIntegral (length a)))
     ObjectDict d -> pure (ValueNumber (fromIntegral (M.size d)))
-evalLength _ = throwError (ErrMisc "length takes one argument")
+evalLength _ = throwRunError (ErrMisc "length takes one argument")
 
+-- | Evaluate a function (with the given name) on doubles.
 evalMathPrim :: String -> (Double -> Double) -> Prim
 evalMathPrim _ f [ValueNumber x] = pure (ValueNumber (f x))
-evalMathPrim name _ _ = throwError (ErrMisc (name ++ "takes one number argument"))
+evalMathPrim name _ _ = throwRunError (ErrMisc (name ++ "takes one number argument"))
 
+-- | Generate a random number in the given range (low, then high
+-- bound, inclusive).  If the first argument is False, generate any
+-- float in the range.  If it is True, then generate an integer.
 evalRand :: Bool -> Prim
 evalRand False [ValueNumber l, ValueNumber h] = ValueNumber <$> liftIO (randomRIO (l, h))
 evalRand True [l, h] = do
   l' <- checkInt l
   r' <- checkInt h
   ValueNumber . fromIntegral <$> liftIO (randomRIO (l', r'))
-evalRand _ _ = throwError (ErrMisc "rand takes two arguments")
+evalRand _ _ = throwRunError (ErrMisc "rand takes two arguments")
 
--- operations between two values
+-- | Evaluate an operations between two values.
 evalBinop :: Binop -> Value -> Value -> Interpret Value
 evalBinop BinopPlus x y = addOrAppend x y
 evalBinop BinopMinus x y = binopCheck checkNumber ValueNumber (-) x y
@@ -291,11 +336,16 @@ evalBinop BinopNotEq x y = fmap (ValueBool . not) (deepEquals x y)
 evalBinop BinopAnd x y = binopCheck checkBool ValueBool (&&) x y
 evalBinop BinopOr x y = binopCheck checkBool ValueBool (||) x y
 
--- | From https://stackoverflow.com/a/64163086. Weird omission from
--- the standard library.
+-- | The floating-point equivalent to integer mod: return the float
+-- such that floor(a / b) * b + a = fmod(a, b). From
+-- https://stackoverflow.com/a/64163086. Weird omission from the
+-- standard library.
 fmod :: Double -> Double -> Double
 fmod x y = x - y * fromIntegral (floor (x / y) :: Int)
 
+-- | Compare two values, going through references (compare the
+-- contents of arrays and dictionaries, recursively, instead of
+-- relying on reference equality).
 deepEquals :: Value -> Value -> Interpret Bool
 deepEquals (ValueNumber x) (ValueNumber y) = pure (x == y)
 deepEquals (ValueBool x) (ValueBool y) = pure (x == y)
@@ -312,9 +362,13 @@ deepEquals (ValueRef x) (ValueRef y) = do
       let eq ((k1, v1), (k2, v2)) = fmap (k1 == k2 &&) (deepEquals v1 v2)
           pairs = zip (M.toAscList dx) (M.toAscList dy)
        in fmap and (traverse eq pairs)
-    objEquals o1 o2 = throwError (ErrType (objectType o1) (objectType o2))
-deepEquals x y = ErrType <$> valueType x <*> valueType y >>= throwError
+    objEquals _ _ = pure False
+deepEquals _ _ = pure False
 
+-- | If the two values are numbers, add them.  If they are arrays or
+-- strings, append them (non-mutating).  If it is a dictionary,
+-- compute the union, where keys in the left map override ones in the
+-- right (non-mutating).
 addOrAppend :: Value -> Value -> Interpret Value
 addOrAppend (ValueNumber x) (ValueNumber y) = pure (ValueNumber (x + y))
 addOrAppend (ValueString x) (ValueString y) = pure (ValueString (x ++ y))
@@ -328,10 +382,10 @@ addOrAppend (ValueRef x) (ValueRef y) = do
     objAppend :: Object -> Object -> Interpret Object
     objAppend (ObjectArray ax) (ObjectArray ay) = pure (ObjectArray (ax ++ ay))
     objAppend (ObjectDict dx) (ObjectDict dy) = pure (ObjectDict (dx `M.union` dy))
-    objAppend o1 o2 = throwError (ErrType (objectType o1) (objectType o2))
-addOrAppend x y = ErrType <$> valueType x <*> valueType y >>= throwError
+    objAppend o1 o2 = throwRunError (ErrType (objectType o1) (objectType o2))
+addOrAppend x y = ErrType <$> valueType x <*> valueType y >>= throwRunError
 
--- operations on one value
+-- | Operations on one value.
 evalMonop :: Monop -> Value -> Interpret Value
 evalMonop MonopNot x = monopCheck checkBool ValueBool not x
 evalMonop MonopNeg x = monopCheck checkNumber ValueNumber negate x
@@ -352,10 +406,11 @@ binopCheck check result op x y = do
   y' <- check y
   notSameType <- (/=) <$> valueType x <*> valueType y
   if notSameType
-    then ErrType <$> valueType x <*> valueType y >>= throwError
+    then ErrType <$> valueType x <*> valueType y >>= throwRunError
     else pure ()
   pure (result (x' `op` y'))
 
+-- | Helper to typecheck one value, and execute an operation on it.
 monopCheck ::
   (Value -> Interpret a) ->
   (b -> Value) ->
@@ -366,13 +421,17 @@ monopCheck check result op x = do
   x' <- check x
   pure (result (op x'))
 
+-- | Do a lookup.  If the variable is in the current environment,
+-- return it, else recurse upwards into outer scopes.
 lookupEnv :: Ident -> Interpret Value
 lookupEnv var = do
   result <- findEnv var
   case result of
     Just (_, val) -> pure val
-    Nothing -> throwError (ErrLookup var)
+    Nothing -> throwRunError (ErrLookup var)
 
+-- | Mutate a variable, either in the current environment or an
+-- enclosing one.
 modifyEnv :: Ident -> Value -> Interpret ()
 modifyEnv var val = do
   result <- findEnv var
@@ -384,7 +443,8 @@ modifyEnv var val = do
   liftIO (writeIORef ref env')
 
 -- | Return a reference to the envinorment this variable is defined
--- in, and Nothing if it is not defined in any of them.
+-- in, as well as the value it is bound to, and Nothing if it is not
+-- defined in any of them.
 findEnv :: Ident -> Interpret (Maybe (IORef Env, Value))
 findEnv var = do
   ref <- ask
@@ -396,6 +456,7 @@ findEnv var = do
         local (const ref') (findEnv var)
       Nothing -> pure Nothing
 
+-- | Convert a value to a string, for use in print.
 showValue :: Value -> Interpret String
 showValue (ValueNumber n) = pure (show n)
 showValue (ValueString n) = pure n
@@ -419,32 +480,42 @@ showValue (ValueRef r) = do
       strs <- traverse showEntry (M.toList entries)
       pure ("{" ++ intercalate ", " strs ++ "}")
 
+-- | Helper to check if the value is a number and throw an error
+-- otherwise.
 checkNumber :: Value -> Interpret Double
 checkNumber (ValueNumber n) = pure n
-checkNumber v = ErrType VTypeNumber <$> valueType v >>= throwError
+checkNumber v = ErrType VTypeNumber <$> valueType v >>= throwRunError
 
+-- | Helper to check if the value is both a number and an integer (0
+-- fractional part).
 checkInt :: Value -> Interpret Int
 checkInt x = do
   num <- checkNumber x
   if num /= fromIntegral (round num :: Int)
-    then throwError (ErrMisc "expected an integer index")
+    then throwRunError (ErrMisc "expected an integer index")
     else pure (round num)
 
+-- | Helper to check if the value is a boolean.
 checkBool :: Value -> Interpret Bool
 checkBool (ValueBool n) = pure n
-checkBool v = ErrType VTypeBool <$> valueType v >>= throwError
+checkBool v = ErrType VTypeBool <$> valueType v >>= throwRunError
 
+-- | Helper to check if the value is a reference type (array or
+-- dictionary).
 checkRef :: Value -> Interpret (IORef Object)
 checkRef (ValueRef r) = pure r
-checkRef v = ErrType VTypeBool <$> valueType v >>= throwError
+checkRef v = ErrType VTypeBool <$> valueType v >>= throwRunError
 
--- | Make sure that the value is a key type.
+-- | Make sure that the value is a key type (immutable and
+-- comparable): a number, string, null, or a boolean.
 checkKey :: Value -> Interpret Value
 checkKey v@(ValueNumber _) = pure v
 checkKey v@(ValueString _) = pure v
+checkKey v@(ValueBool _) = pure v
 checkKey ValueNull = pure ValueNull
-checkKey _ = throwError (ErrMisc "expected an (immutable) key type")
+checkKey _ = throwRunError (ErrMisc "expected an (immutable) key type")
 
+-- | Return the type code for the given value (for error codes, etc).
 valueType :: Value -> Interpret VType
 valueType (ValueNumber _) = pure VTypeNumber
 valueType (ValueBool _) = pure VTypeBool
@@ -456,10 +527,12 @@ valueType (ValueRef r) = do
   o <- liftIO (readIORef r)
   pure (objectType o)
 
+-- | Return the type of an object (heap value).
 objectType :: Object -> VType
 objectType (ObjectArray _) = VTypeArray
 objectType (ObjectDict _) = VTypeDict
 
+-- | Pretty-print an error code.
 showError :: Error -> Interpret String
 showError (ErrLookup v) = pure ("unknown variable " ++ v)
 showError (ErrMismatch t1 t2) = pure ("mismatched types: " ++ show t1 ++ " and " ++ show t2)
@@ -471,3 +544,11 @@ showError (ErrIndex x i) = do
   is <- showValue i
   pure ("index " ++ is ++ " does not exist in " ++ xs)
 showError (ErrMisc misc) = pure misc
+
+-- | Throw a runtime error (and not a returned value).
+throwRunError :: Error -> Interpret a
+throwRunError e = throwError (Left e)
+
+-- | Start unwinding the interpreter, to do an early return.
+throwReturn :: Value -> Interpret a
+throwReturn v = throwError (Right v)
