@@ -6,10 +6,18 @@ import Data.IORef
 import qualified Data.Map as M
 import Syntax
 
+-- | An interpreter is just a reference to the outermost scope.
 newtype Interpreter = Interpreter (IORef Env)
 
-type Interpret a = ReaderT (IORef Env) (ExceptT Error IO) a
+-- | The Interpret monad can read a reference to the current
+-- environment, and throw a runtime error or a value that is being
+-- returned.
+type Interpret a = ReaderT (IORef Env) (ExceptT (Either Error Value) IO) a
 
+-- | An environment is a map from variables to values (which may be
+-- either immutable values, or references to mutable values on the
+-- heap, as described below).  An environment can optionally have a
+-- parent scope.
 data Env = Env (M.Map Ident Value) (Maybe (IORef Env))
 
 -- | An immutable value at runtime.  Variables bind to these directly:
@@ -20,16 +28,16 @@ data Value
   | ValueBool Bool
   | ValueString String
   | -- | A closure.  When you evaluate a functione expression, it
-    -- | closes over its local envinrionment and returns it in one of
-    -- | these (lexical scope).
+    -- closes over its local envinrionment and returns it in one of
+    -- these (lexical scope).
     ValueClosure (IORef Env) [Ident] Block
   | ValueNull
   | -- | A reference to an object on the heap.  This is for variables
-    -- | that refer to things that can be mutated, like arrays or
-    -- | dictionaries.  When you pass a reference into a function, the
-    -- | reference is copied, but the object that it points to is not.
-    -- | Assigning to a dictionary/array access expression mutates the
-    -- | object pointed to by the reference.
+    -- that refer to things that can be mutated, like arrays or
+    -- dictionaries.  When you pass a reference into a function, the
+    -- reference is copied, but the object that it points to is not.
+    -- Assigning to a dictionary/array access expression mutates the
+    -- object pointed to by the reference.
     ValueRef (IORef Object)
   | -- | A builtin function, like print.
     ValuePrim Prim
@@ -45,10 +53,13 @@ instance Eq Value where
 
 instance Ord Value where
   ValueNumber x `compare` ValueNumber y = x `compare` y
+  ValueNumber _ `compare` _ = LT
   ValueBool x `compare` ValueBool y = x `compare` y
+  ValueBool _ `compare` _ = LT
   ValueString x `compare` ValueString y = x `compare` y
+  ValueString _ `compare` _ = LT
   ValueNull `compare` ValueNull = EQ
-  _ `compare` _ = error "equality is not defined on function or reference types"
+  _ `compare` _ = error "ordering is not defined on function or reference types"
 
 -- | An object on the heap.  Functions that modify objects can write
 -- to the IORef pointing to us.
@@ -77,6 +88,7 @@ instance Show VType where
   show VTypeArray = "array"
   show VTypeDict = "dictionary"
 
+-- | A runtime error.
 data Error
   = ErrLookup Ident
   | ErrMismatch VType VType

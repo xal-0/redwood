@@ -1,0 +1,139 @@
+playing = true
+score = 0
+snake = null
+apple = null
+
+func generate_apple() {
+  x = randi(-24, 24)
+  y = randi(-24, 24)
+
+  for piece in snake.body {
+    if piece[0] == x && piece[1] == y {
+      return generate_apple()
+    }
+  }
+
+  apple = [x, y]
+}
+
+func init() {
+  snake = {
+    vx: 0,
+    vy: 0,
+    spr: "head_right.bmp",
+    body: [[2, 0], [1, 0], [0, 0]]
+  }
+
+  generate_apple()
+
+  score = 0
+  playing = true
+}
+init()
+
+func snake_draw() {
+  vx = snake.body[0][0] - snake.body[1][0]
+  vy = snake.body[0][1] - snake.body[1][1]
+
+  spr = if vx > 0 {
+    "head_right.bmp"
+  } else if vx < 0 {
+    "head_left.bmp"
+  } else if vy > 0 {
+    "head_up.bmp"
+  } else if vy < 0 {
+    "head_down.bmp"
+  }
+  sprite(spr, snake.body[0][0] * 8, snake.body[0][1] * 8)
+
+  i = 1
+  l = length(snake.body) - 1
+  while i < l {
+    sprite("snake.bmp", snake.body[i][0] * 8, snake.body[i][1] * 8)
+    i = i + 1
+  }
+
+  vx = snake.body[l][0] - snake.body[l-1][0]
+  vy = snake.body[l][1] - snake.body[l-1][1]
+  spr = if vx > 0 {
+    "tail_left.bmp"
+  } else if vx < 0 {
+    "tail_right.bmp"
+  } else if vy > 0 {
+    "tail_down.bmp"
+  } else if vy < 0 {
+    "tail_up.bmp"
+  }
+  sprite(spr, snake.body[l][0] * 8, snake.body[l][1] * 8)
+}
+
+func snake_input(dx, dy) {
+  head0 = snake.body[0]
+  head1 = snake.body[1]
+  if head0[0] + dx == head1[0] && head0[1] + dy == head1[1] {
+    return
+  }
+
+  snake.vx = dx
+  snake.vy = dy
+}
+
+func snake_move() {
+  if snake.vx == 0 && snake.vy == 0 {
+    return true
+  }
+
+  head = snake.body[0]
+  newpiece = [head[0] + snake.vx, head[1] + snake.vy]
+  if abs(newpiece[0]) > 24 || abs(newpiece[1]) > 24 {
+    return false
+  }
+  for piece in snake.body {
+    if piece == newpiece {
+      return false
+    }
+  }
+
+  if newpiece == apple {
+    score = score + 1
+    generate_apple()
+  } else {
+    delete(snake.body, length(snake.body) - 1)
+  }
+
+  snake.body = [newpiece] + snake.body
+  true
+}
+
+t = 0
+speed = 5
+
+func update() {
+  if playing {
+    if key("left") { snake_input(-1, 0) }
+    if key("right") { snake_input(1, 0) }
+    if key("up") { snake_input(0, 1) }
+    if key("down") { snake_input(0, -1) }
+
+    if t % speed == speed - 1 {
+      if !snake_move() {
+        playing = false
+        return
+      }
+    }
+
+    snake_draw()
+
+    sprite("apple.bmp", apple[0] * 8, apple[1] * 8)
+  } else {
+    text("ffffff", 0.2, -75, 30, "Game over")
+    text("ffffff", 0.2, -75, 0, "Score: " + string(score))
+    text("ffffff", 0.2, -75, -30, "R to restart")
+
+    if key("r") {
+      init()
+    }
+  }
+
+  t = t + 1
+}
