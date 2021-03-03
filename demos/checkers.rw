@@ -1,0 +1,246 @@
+
+size = 100
+offset = size * 4
+
+board = []
+turn = true
+
+cursor = {
+    x: 1,
+    y: 1,
+    blink: 0,
+    xSelected: -1,
+    ySelected: -1,
+    pressed: false
+}
+
+BLACK = "000000"
+WHITE = "ffffff"
+
+func init() {
+    i = 0
+    while i < 8 {
+        j = 0
+        row = []
+        while j < 8 {
+            if (i + j) % 2 == 0 {
+                if i < 3 {
+                    push(row, 1)    # white piece
+                } else if i > 4 {
+                    push(row, -1)   # black piece
+                } else {
+                    push(row, 0)    # empty tile
+                }
+            }else{
+                push(row,0)
+            }
+            j = j + 1
+        }
+        push(board, row)
+        i = i + 1
+    }
+}
+
+func drawBoard(){
+    i = 0
+    while i < 8 {
+        j = 0
+        while j < 8 {
+            if (i + j) % 2 == 1 {
+                rect(WHITE, j*size-offset, i*size-offset, size, size)
+            } else {
+                if board[i][j] == 1 {
+                    drawToken(size / 3, j*size-offset+size/2, i*size-offset+size/2, true)
+                } else if board[i][j] == -1 {
+                    drawToken(size / 3, j*size-offset+size/2, i*size-offset+size/2, false)
+                }
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    drawCursor()
+}
+
+func drawToken(r, x, y, white){
+    circle(WHITE, r, x, y)
+    if white {
+        i = 1
+        while i < 5 {
+            circle(WHITE, r - (i * 3), x, y)
+            i = i + 1
+        }
+    } else {
+        circle(WHITE, r - 1, x, y)
+    }
+}
+
+func drawCursor(){
+    blinkTime = 30
+    if cursor.blink < blinkTime {
+        color = WHITE
+        if (cursor.x + cursor.y) % 2 == 1{
+            color = BLACK
+        }
+        drawBox (color, cursor.x, cursor.y, 2)
+        cursor.blink = cursor.blink + 1
+    } else {
+        if cursor.blink >= blinkTime * 1.5 {
+            cursor.blink = 0
+        }
+        cursor.blink = cursor.blink + 1
+    }
+    if cursor.xSelected != -1 {
+        drawBox(WHITE, cursor.xSelected, cursor.ySelected, 1)
+        drawBox(WHITE, cursor.xSelected, cursor.ySelected, 2)
+        drawBox(WHITE, cursor.xSelected, cursor.ySelected, 5)
+        drawBox(BLACK, cursor.xSelected, cursor.ySelected, -1)
+    }
+}
+
+func drawBox(color, x, y, r){
+    line(color, x * size + r - offset, y * size + r - offset, x * size + size - offset - r, y * size - offset + r)  
+    line(color, x * size + r - offset, y * size + r - offset, x * size - offset + r, y * size + size - offset - r)
+    line(color, x * size - r + size - offset, y * size + r - offset, x * size + size - offset - r, y * size + size - offset - r)
+    line(color, x * size + r - offset, y * size - r + size - offset, x * size + size - offset - r, y * size + size - offset - r)
+}
+
+func moveCursor(){
+    unpressed = true
+    if key("left") {
+        if !cursor.pressed {
+            cursor.x = cursor.x - 1
+            if cursor.x < 0 {
+                cursor.x = 0
+            }
+            cursor.pressed = true
+        } 
+        unpressed = false
+    }
+    if key("right") {
+        if !cursor.pressed {
+            cursor.x = cursor.x + 1
+            if cursor.x > 7 {
+                cursor.x = 7
+            }
+            cursor.pressed = true
+        }
+        unpressed = false
+    }
+    if key("up") {
+        if !cursor.pressed {
+            cursor.y = cursor.y + 1
+            if cursor.y > 7 {
+                cursor.y = 7
+            }
+            cursor.pressed = true
+        }
+        unpressed = false
+    }
+    if key("down") {
+        if !cursor.pressed {
+            cursor.y = cursor.y - 1
+            if cursor.y < 0 {
+                cursor.y = 0
+            }
+            cursor.pressed = true
+        }
+        unpressed = false
+    }
+    if key ("space") {
+        if !cursor.pressed {
+            if cursor.xSelected == -1 {
+                if turn && board[cursor.y][cursor.x] == 1 {
+                    cursor.xSelected = cursor.x
+                    cursor.ySelected = cursor.y
+                } else if !turn && board[cursor.y][cursor.x] == -1 {
+                    cursor.xSelected = cursor.x
+                    cursor.ySelected = cursor.y
+                }
+            } else if cursor.xSelected == cursor.x && cursor.ySelected == cursor.y {
+                cursor.xSelected = -1
+                cursor.ySelected = -1
+            } else {
+                movePiece()
+            }
+            cursor.pressed = true
+        }
+        unpressed = false
+    }
+    if unpressed {
+        cursor.pressed = false
+    }
+}
+
+func movePiece(){
+    if pieceCanMoveTo() {
+        piece = board[cursor.ySelected][cursor.xSelected]
+        board[cursor.ySelected][cursor.xSelected] = 0
+        board[cursor.y][cursor.x] = piece
+        if cursor.y == cursor.ySelected + 2 || cursor.y == cursor.ySelected - 2{
+            board[(cursor.y+cursor.ySelected)/2][(cursor.x+cursor.xSelected)/2] = 0
+        }
+        cursor.xSelected = -1
+        cursor.ySelected = -1
+        if turn {
+            cursor.x = 7
+            cursor.y = 7
+        } else {
+            cursor.x = 0
+            cursor.y = 0
+        }
+        turn = !turn
+    }
+}
+
+func pieceCanMoveTo () {
+    if (cursor.x + cursor.y) % 2 == 1 || board[cursor.y][cursor.x] != 0{
+        return false
+    }
+    if turn {
+        if cursor.y == cursor.ySelected + 1 && (cursor.x == cursor.xSelected + 1 || cursor.x == cursor.xSelected - 1){
+            return true
+        } else if cursor.y == cursor.ySelected + 2 && cursor.x == cursor.xSelected + 2 && board[cursor.y+1][cursor.x-1] == -1{
+            return true
+        } else if cursor.y == cursor.ySelected + 2 && cursor.x == cursor.xSelected - 2 && board[cursor.y+1][cursor.x+1] == -1{
+            return true
+        }
+    }else {
+        if cursor.y == cursor.ySelected - 1 && (cursor.x == cursor.xSelected + 1 || cursor.x == cursor.xSelected - 1){
+            return true
+        } else if cursor.y == cursor.ySelected - 2 && cursor.x == cursor.xSelected + 2 && board[cursor.y-1][cursor.x-1] == 1{
+            return true
+        } else if cursor.y == cursor.ySelected - 2 && cursor.x == cursor.xSelected - 2 && board[cursor.y-1][cursor.x+1] == 1{
+            return true
+        }
+    }
+    return false
+}
+
+func checkWin() {
+    whiteDead = true
+    blackDead = true
+    for row in board {
+        for tile in row {
+            if tile == 1 {
+                whiteDead = false
+            } else if tile == -1 {
+                blackDead = false
+            }
+        }
+    }
+    if whiteDead {
+        print("player 2 wins \n")
+    }
+    if blackDead {
+        print("player 1 wins \n")
+    }
+}
+
+func update (){
+    drawBoard()
+    moveCursor()
+    checkWin()
+}
+
+init()
