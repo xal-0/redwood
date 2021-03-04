@@ -10,7 +10,7 @@ import Interpreter
 import Numeric
 import Runtime
 import System.Exit
-import System.FilePath.Posix
+import System.FilePath
 
 -- | Extra state for the graphical interpreter.  The extra builtins
 -- can read/write these variables, and they are used to communicate
