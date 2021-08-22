@@ -1,7 +1,10 @@
-# CPSC 312 Proposal
+# Redwood
 
 A simple imperative programming language built to make small games.
 
+![image](https://user-images.githubusercontent.com/33556084/130372226-45740e5f-b41c-4d28-a041-630672101ca8.png)
+
+## Grammar
 
 ```
 program ::= stmt*
@@ -45,6 +48,8 @@ keyvalue ::= ident ':' expr
 
 binop ::= '+' | '-' | '*' | '/' | '<' | '>' | '==' | '&' | '|' 
 ```
+
+## Example code
 
 ```
 player = null
